@@ -6,6 +6,8 @@ import type { Message } from '../../types/chat'
 const props = defineProps<{
   message: Message
   avatarUrl?: string | null
+  /** SSE 流式输出中：内容尾部显示闪烁光标 */
+  streaming?: boolean
 }>()
 
 const bubbleRef = ref<HTMLElement>()
@@ -45,10 +47,17 @@ function onBubbleClick(event: MouseEvent) {
   <div class="message-row" :class="message.role">
     <UserAvatar :role="message.role" :avatar-url="avatarUrl" />
     <div ref="bubbleRef" class="message-bubble" :class="message.role" @click="onBubbleClick">
-      <!-- assistant 消息：后端渲染好的 HTML 直接展示 -->
-      <div v-if="message.html" class="message-html" v-html="message.html"></div>
+      <!-- assistant 消息：后端渲染好的 HTML 直接展示；
+           流式中容器转 inline，让光标跟在末尾文字后而不是换行 -->
+      <div
+        v-if="message.html"
+        class="message-html"
+        :class="{ streaming }"
+        v-html="message.html"
+      ></div>
       <span v-else-if="message.content" class="message-text">{{ message.content }}</span>
       <span v-else class="typing"><i></i><i></i><i></i></span>
+      <span v-if="streaming && (message.html || message.content)" class="cursor"></span>
     </div>
   </div>
 </template>
@@ -244,6 +253,27 @@ function onBubbleClick(event: MouseEvent) {
 .message-html :deep(ul:last-child),
 .message-html :deep(ol:last-child) {
   margin-bottom: 0;
+}
+
+/* 流式中 HTML 容器转 inline：光标才能接在末尾文字同一行（流式结束自动还原块级布局） */
+.message-html.streaming {
+  display: inline;
+}
+
+/* SSE 流式光标：细竖线闪烁，跟在最后内容尾部 */
+.cursor {
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  margin-left: 0.125rem;
+  vertical-align: -0.125em;
+  background: var(--text-h, #08060d);
+  animation: cursor-blink 0.9s ease infinite;
+}
+
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
 }
 
 /* 打字动画 */

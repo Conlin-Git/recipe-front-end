@@ -18,7 +18,7 @@ const emit = defineEmits<{
 
 const chatStore = useChatStore()
 const authStore = useAuthStore()
-const { messages } = storeToRefs(chatStore)
+const { messages, streaming } = storeToRefs(chatStore)
 
 const listRef = ref<HTMLElement | null>(null)
 
@@ -101,6 +101,7 @@ defineExpose({ scrollToBottom })
         :key="index"
         :message="msg"
         :avatar-url="avatarUrl"
+        :streaming="streaming && index === messages.length - 1 && msg.role === 'assistant'"
       />
     </main>
 
