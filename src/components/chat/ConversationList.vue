@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * 左侧会话列表：窄条常驻 + 抽屉式展开（浮层覆盖，不挤压消息区）。
- * 默认收起；选中会话/新对话后自动收起；点遮罩收起。
+ * 左侧会话列表：抽屉式展开（浮层覆盖，不挤压消息区）。
+ * 默认收起；由头部按钮触发展开；选中会话/新对话后自动收起；点遮罩收起。
  */
 import { ref } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -29,15 +29,16 @@ function handleCreate() {
   emit('create')
   collapsed.value = true
 }
+
+// 供头部按钮展开抽屉
+defineExpose({
+  open: () => {
+    collapsed.value = false
+  },
+})
 </script>
 
 <template>
-  <!-- 常驻窄条 -->
-  <aside class="rail">
-    <button class="icon-btn" title="展开会话列表" @click="collapsed = false">»</button>
-    <button class="icon-btn" title="新对话" @click="handleCreate">＋</button>
-  </aside>
-
   <!-- 遮罩：点击收起抽屉 -->
   <div v-if="!collapsed" class="drawer-backdrop" @click="collapsed = true"></div>
 
@@ -69,20 +70,6 @@ function handleCreate() {
 </template>
 
 <style scoped>
-/* ===== 常驻窄条（在文档流中，只占 2.75rem） ===== */
-.rail {
-  width: 2.75rem;
-  height: 100%;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 0.5rem;
-  box-sizing: border-box;
-  border-right: 1px solid var(--border, #e5e4e7);
-}
-
 /* ===== 遮罩 ===== */
 .drawer-backdrop {
   position: absolute;

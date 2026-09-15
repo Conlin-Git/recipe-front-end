@@ -14,3 +14,7 @@ export function register(params: RegisterParams) {
     body: JSON.stringify(params),
   })
 }
+
+export function logout() {
+  return request<void>('/auth/logout', { method: 'POST' })
+}

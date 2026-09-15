@@ -15,26 +15,38 @@ export function deleteConversation(conversationId: number) {
 }
 
 /**
- * 发送消息并以 SSE 流式接收回复。
- * 上下文由服务端按 conversationId 维护，无需前端传历史。
- * EventSource 不支持 POST，这里用 fetch + ReadableStream 手动解析。
+ * 点火：起后台生成任务，立即返回会话ID。
+ * token 事件由服务端缓存进 Redis Stream，凭返回的 ID 调 subscribeStream 订阅。
  */
-export async function streamChat(
-  message: string,
-  conversationId: number | null,
+export function startChat(message: string, conversationId: number | null) {
+  return request<{ conversation_id: number }>('/chat', {
+    method: 'POST',
+    body: JSON.stringify({ message, conversation_id: conversationId }),
+  })
+}
+
+/**
+ * 订阅生成过程（SSE）：lastId 之后的事件重放 + 阻塞跟随，直到 done/error。
+ * 生成在服务端独立进行，本连接可随时 abort（终止观看）或断线重连（断网续传），
+ * 重连时带上最近收到的事件 id 即可从断点继续。
+ * EventSource 不支持自定义 header，这里用 fetch + ReadableStream 手动解析。
+ */
+export async function subscribeStream(
+  conversationId: number,
+  lastId: string,
   callbacks: StreamCallbacks,
+  signal?: AbortSignal,
 ): Promise<void> {
   const auth = useAuthStore()
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  const headers: Record<string, string> = {}
   if (auth.token) {
     headers['Authorization'] = `Bearer ${auth.token}`
   }
 
-  const resp = await fetch(`${BASE_URL}/chat`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ message, conversation_id: conversationId }),
-  })
+  const resp = await fetch(
+    `${BASE_URL}/chat/${conversationId}/stream?last_id=${encodeURIComponent(lastId)}`,
+    { headers, signal },
+  )
 
   if (resp.status === 401) {
     // token 过期：清除登录态，头部会切换回登录按钮
@@ -54,7 +66,7 @@ export async function streamChat(
     if (done) break
     buffer += decoder.decode(value, { stream: true })
 
-    // SSE 事件以空行分隔
+    // SSE 事件以空行分隔；心跳行（": ping"）不匹配 data: 前缀，自然忽略
     const events = buffer.split('\n\n')
     buffer = events.pop() ?? ''
 
@@ -65,12 +77,15 @@ export async function streamChat(
       if (data === '[DONE]') return
       try {
         const parsed = JSON.parse(data)
-        if (parsed.error) {
-          callbacks.onError(parsed.error)
-        } else if (parsed.conversation_id !== undefined) {
-          callbacks.onMeta?.(parsed.conversation_id, !!parsed.rag)
-        } else if (parsed.delta || parsed.content) {
-          callbacks.onToken(parsed.delta ?? parsed.content, parsed.html)
+        if (parsed.id) callbacks.onId?.(parsed.id)
+        if (parsed.type === 'meta') {
+          callbacks.onMeta?.(parsed.conversation_id, !!parsed.rag, parsed.question)
+        } else if (parsed.type === 'delta') {
+          callbacks.onToken(parsed.delta, parsed.html)
+        } else if (parsed.type === 'error') {
+          callbacks.onError(parsed.message)
+        } else if (parsed.type === 'done') {
+          callbacks.onDone?.()
         }
       } catch {
         // 忽略不完整的 JSON 片段

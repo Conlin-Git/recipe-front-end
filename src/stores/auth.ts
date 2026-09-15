@@ -29,9 +29,18 @@ export const useAuthStore = defineStore('auth', {
       this.user = user
     },
     logout() {
+      const token = this.token
       this.token = ''
       this.user = null
       localStorage.removeItem(TOKEN_KEY)
+      // 通知后端吊销 token（fire-and-forget）。
+      // 直接 fetch 不走 request()：401 时 request() 会回调 logout()，走它会无限递归
+      if (token) {
+        fetch('/api/v1/auth/logout', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => {})
+      }
     },
   },
 })

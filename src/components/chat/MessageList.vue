@@ -22,6 +22,17 @@ const { messages } = storeToRefs(chatStore)
 
 const listRef = ref<HTMLElement | null>(null)
 
+// 「回到底部」悬浮按钮：距底部超过阈值才显示
+const BOTTOM_THRESHOLD = 200
+const showBackToBottom = ref(false)
+
+function handleScroll() {
+  const el = listRef.value
+  if (!el) return
+  showBackToBottom.value =
+    el.scrollHeight - el.scrollTop - el.clientHeight > BOTTOM_THRESHOLD
+}
+
 // rAF 节流：流式输出时每个 token 都触发 watch，
 // 合并到每帧最多滚动一次，避免频繁 layout
 let rafId = 0
@@ -70,25 +81,60 @@ defineExpose({ scrollToBottom })
 </script>
 
 <template>
-  <main ref="listRef" class="chat-messages" @error.capture="handleImgError">
-    <div v-if="messages.length === 0" class="chat-empty">
-      <p>哟，来啦！我是 Conlin 🍳</p>
-      <p>白天写代码，下班颠勺，川菜随便问，前后端、AI Agent 也能唠～</p>
-      <button v-if="!authStore.isLoggedIn" class="welcome-login-btn" @click="emit('login')">
-        登录 / 注册
-      </button>
-    </div>
+  <div class="chat-messages-wrap">
+    <main
+      ref="listRef"
+      class="chat-messages"
+      @scroll.passive="handleScroll"
+      @error.capture="handleImgError"
+    >
+      <div v-if="messages.length === 0" class="chat-empty">
+        <p>哟，来啦！我是 Conlin 🍳</p>
+        <p>白天写代码，下班颠勺，川菜随便问，前后端、AI Agent 也能唠～</p>
+        <button v-if="!authStore.isLoggedIn" class="welcome-login-btn" @click="emit('login')">
+          登录 / 注册
+        </button>
+      </div>
 
-    <MessageItem
-      v-for="(msg, index) in messages"
-      :key="index"
-      :message="msg"
-      :avatar-url="avatarUrl"
-    />
-  </main>
+      <MessageItem
+        v-for="(msg, index) in messages"
+        :key="index"
+        :message="msg"
+        :avatar-url="avatarUrl"
+      />
+    </main>
+
+    <Transition name="fade">
+      <button
+        v-show="showBackToBottom"
+        class="back-to-bottom"
+        title="回到底部"
+        @click="scrollToBottom(true)"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+          <path
+            d="M6 9l6 6 6-6"
+            stroke="currentColor"
+            stroke-width="2.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
+    </Transition>
+  </div>
 </template>
 
 <style scoped>
+/* 包裹层提供定位上下文，让悬浮按钮相对滚动区定位（不随内容滚动） */
+.chat-messages-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
 .chat-messages {
   flex: 1;
   min-height: 0;
@@ -98,6 +144,40 @@ defineExpose({ scrollToBottom })
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+.back-to-bottom {
+  position: absolute;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  width: 2.25rem;
+  height: 2.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border, #e5e4e7);
+  border-radius: 50%;
+  color: var(--text, #6b6375);
+  background: var(--bg, #fff);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.back-to-bottom:hover {
+  color: var(--accent, #aa3bff);
+  border-color: var(--accent, #aa3bff);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(0.5rem);
 }
 
 .chat-empty {

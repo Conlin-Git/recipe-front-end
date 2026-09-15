@@ -3,11 +3,11 @@
  * 聊天主页（单页面应用）：左侧会话列表 + 右侧（上标题 / 中消息 / 下输入）。
  * 登录/注册、个人信息均为弹窗交互，无路由跳转。
  */
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import ConversationList from '../../components/chat/ConversationList.vue'
 import MessageList from '../../components/chat/MessageList.vue'
-import ChatInput from '../../components/chat/ChatInput.vue'
+import ChatInput, { type InputMode } from '../../components/chat/ChatInput.vue'
 import UserAvatar from '../../components/common/UserAvatar.vue'
 import AuthDialog from '../../components/auth/AuthDialog.vue'
 import ProfileDialog from '../../components/profile/ProfileDialog.vue'
@@ -18,16 +18,26 @@ import { useChatStream } from '../../composables/useChatStream'
 
 const chatStore = useChatStore()
 const authStore = useAuthStore()
-const { streaming } = storeToRefs(chatStore)
+const { streaming, detachedGenerating } = storeToRefs(chatStore)
 const {
   send,
+  stop,
+  resume,
   loadLatestConversation,
   selectConversation,
   startNewConversation,
   removeConversation,
 } = useChatStream()
 
+/** 输入区三态：观看中可终止，终止后可继续输出 */
+const inputMode = computed<InputMode>(() =>
+  streaming.value ? 'streaming' : detachedGenerating.value ? 'detached' : 'idle',
+)
+
 const activeDialog = ref<'auth' | 'profile' | null>(null)
+
+/** 会话列表抽屉引用，头部按钮触发展开 */
+const conversationListRef = ref<InstanceType<typeof ConversationList> | null>(null)
 
 function handleSend(text: string) {
   // 未登录先弹登录框
@@ -66,6 +76,7 @@ onMounted(async () => {
     <!-- 左侧：历史会话列表（未登录不展示） -->
     <ConversationList
       v-if="authStore.isLoggedIn"
+      ref="conversationListRef"
       @select="selectConversation"
       @create="startNewConversation"
       @remove="removeConversation"
@@ -73,28 +84,46 @@ onMounted(async () => {
     />
 
     <div class="chat-container">
-      <!-- 头部：标题 + 用户入口 -->
+      <!-- 头部：左（展开会话列表）/ 中（标题）/ 右（用户入口） -->
       <header class="chat-header">
         <div class="chat-header-left">
+          <button
+            v-if="authStore.isLoggedIn"
+            class="icon-btn"
+            title="展开会话列表"
+            @click="conversationListRef?.open()"
+          >
+            »
+          </button>
+        </div>
+        <div class="chat-header-center">
           <span class="chat-header-icon">🍳</span>
           <h1 class="chat-header-title">Conlin</h1>
         </div>
-        <button
-          v-if="authStore.isLoggedIn"
-          class="chat-header-user"
-          title="个人信息"
-          @click="activeDialog = 'profile'"
-        >
-          <UserAvatar role="user" :avatar-url="authStore.user?.avatar_url" :size="32" />
-          <span class="nickname">{{ authStore.user?.nickname ?? authStore.user?.username }}</span>
-        </button>
+        <div class="chat-header-right">
+          <button
+            v-if="authStore.isLoggedIn"
+            class="chat-header-user"
+            title="个人信息"
+            @click="activeDialog = 'profile'"
+          >
+            <UserAvatar role="user" :avatar-url="authStore.user?.avatar_url" :size="32" />
+            <span class="nickname">{{ authStore.user?.nickname ?? authStore.user?.username }}</span>
+          </button>
+        </div>
       </header>
 
       <!-- 中间：消息滚动区（未登录时欢迎语下展示登录/注册按钮） -->
       <MessageList :avatar-url="authStore.user?.avatar_url" @login="activeDialog = 'auth'" />
 
-      <!-- 底部：输入框 + 发送按钮（未登录不展示） -->
-      <ChatInput v-if="authStore.isLoggedIn" :disabled="streaming" @send="handleSend" />
+      <!-- 底部：输入框 + 发送/终止/继续输出按钮（未登录不展示） -->
+      <ChatInput
+        v-if="authStore.isLoggedIn"
+        :mode="inputMode"
+        @send="handleSend"
+        @stop="stop"
+        @resume="resume"
+      />
     </div>
 
     <!-- 弹窗：登录/注册、个人信息（常驻挂载，open 控制显隐以支持退场动画） -->
@@ -133,16 +162,47 @@ onMounted(async () => {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 0.875rem 1.25rem;
   border-bottom: 1px solid var(--border, #e5e4e7);
   background: var(--bg, #fff);
 }
 
-.chat-header-left {
+/* 左右等宽，保证中间标题真正居中 */
+.chat-header-left,
+.chat-header-right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.chat-header-right {
+  justify-content: flex-end;
+}
+
+.chat-header-center {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 0.625rem;
+}
+
+.icon-btn {
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: none;
+  border-radius: 0.375rem;
+  background: transparent;
+  color: var(--text, #6b6375);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.icon-btn:hover {
+  background: var(--code-bg, #f4f3ec);
+  color: var(--accent, #aa3bff);
 }
 
 .chat-header-icon {

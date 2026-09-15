@@ -1,12 +1,17 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
 
+/** idle：正常输入发送；streaming：观看生成中（可终止）；detached：已终止但后端还在生成（可继续输出） */
+export type InputMode = 'idle' | 'streaming' | 'detached'
+
 const props = defineProps<{
-  disabled?: boolean
+  mode?: InputMode
 }>()
 
 const emit = defineEmits<{
   send: [text: string]
+  stop: []
+  resume: []
 }>()
 
 const input = ref('')
@@ -23,7 +28,7 @@ async function autoResize() {
 
 function handleSend() {
   const text = input.value.trim()
-  if (!text || props.disabled) return
+  if (!text || props.mode !== 'idle') return
   emit('send', text)
   input.value = ''
   autoResize()
@@ -44,13 +49,28 @@ function onKeydown(e: KeyboardEvent) {
       ref="inputRef"
       v-model="input"
       class="chat-input"
-      placeholder="请输入你的菜谱问题"
+      :placeholder="mode === 'idle' ? '请输入你的问题' : '上一条还在生成中…'"
+      :disabled="mode !== 'idle'"
       title="Enter 发送，Shift+Enter 换行"
       rows="1"
       @input="autoResize"
       @keydown="onKeydown"
     ></textarea>
-    <button class="chat-send-btn" :disabled="disabled || !input.trim()" @click="handleSend">
+    <button
+      v-if="mode === 'streaming'"
+      class="chat-send-btn chat-stop-btn"
+      @click="emit('stop')"
+    >
+      终止
+    </button>
+    <button
+      v-else-if="mode === 'detached'"
+      class="chat-send-btn"
+      @click="emit('resume')"
+    >
+      继续输出
+    </button>
+    <button v-else class="chat-send-btn" :disabled="!input.trim()" @click="handleSend">
       发送
     </button>
   </footer>
@@ -120,6 +140,23 @@ function onKeydown(e: KeyboardEvent) {
 
 .chat-send-btn:disabled {
   opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 终止按钮：红色描边样式，与主操作区分 */
+.chat-stop-btn {
+  color: #e5484d;
+  background: #fff;
+  border: 1px solid #e5484d;
+}
+
+.chat-stop-btn:hover {
+  opacity: 1;
+  background: #fdf0f0;
+}
+
+.chat-input:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
 }
 </style>
