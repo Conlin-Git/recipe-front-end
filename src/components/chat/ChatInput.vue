@@ -1,37 +1,22 @@
 <script setup lang="ts">
-import { nextTick, ref } from 'vue'
+import { ref } from 'vue'
 
-/** idle：正常输入发送；streaming：观看生成中（可终止）；detached：已终止但后端还在生成（可继续输出） */
-export type InputMode = 'idle' | 'streaming' | 'detached'
-
+/** 生成中（streaming / detached）时输入框和发送按钮都禁用 */
 const props = defineProps<{
-  mode?: InputMode
+  disabled?: boolean
 }>()
 
 const emit = defineEmits<{
   send: [text: string]
-  stop: []
-  resume: []
 }>()
 
 const input = ref('')
-const inputRef = ref<HTMLTextAreaElement | null>(null)
-
-/** 输入时自动增高，超过 max-height 出现内部滚动 */
-async function autoResize() {
-  await nextTick()
-  const el = inputRef.value
-  if (!el) return
-  el.style.height = 'auto'
-  el.style.height = `${el.scrollHeight}px`
-}
 
 function handleSend() {
   const text = input.value.trim()
-  if (!text || props.mode !== 'idle') return
+  if (!text || props.disabled) return
   emit('send', text)
   input.value = ''
-  autoResize()
 }
 
 function onKeydown(e: KeyboardEvent) {
@@ -46,31 +31,19 @@ function onKeydown(e: KeyboardEvent) {
 <template>
   <footer class="chat-input-area">
     <textarea
-      ref="inputRef"
       v-model="input"
       class="chat-input"
-      :placeholder="mode === 'idle' ? '请输入你的问题' : '上一条还在生成中…'"
-      :disabled="mode !== 'idle'"
+      :placeholder="disabled ? '上一条还在生成中…' : '请输入你的问题'"
+      :disabled="disabled"
       title="Enter 发送，Shift+Enter 换行"
-      rows="1"
-      @input="autoResize"
+      rows="3"
       @keydown="onKeydown"
     ></textarea>
     <button
-      v-if="mode === 'streaming'"
-      class="chat-send-btn chat-stop-btn"
-      @click="emit('stop')"
-    >
-      终止
-    </button>
-    <button
-      v-else-if="mode === 'detached'"
       class="chat-send-btn"
-      @click="emit('resume')"
+      :disabled="disabled || !input.trim()"
+      @click="handleSend"
     >
-      继续输出
-    </button>
-    <button v-else class="chat-send-btn" :disabled="!input.trim()" @click="handleSend">
       发送
     </button>
   </footer>
@@ -80,7 +53,8 @@ function onKeydown(e: KeyboardEvent) {
 .chat-input-area {
   flex-shrink: 0;
   display: flex;
-  align-items: flex-end;
+  /* 垂直居中对齐：输入框固定高度，发送按钮始终与其对齐 */
+  align-items: center;
   gap: 0.625rem;
   padding: 0.875rem 1.25rem;
   border-top: 1px solid var(--border, #e5e4e7);
@@ -90,11 +64,13 @@ function onKeydown(e: KeyboardEvent) {
 .chat-input {
   flex: 1;
   resize: none;
-  max-height: 7.5rem;
+  /* 固定高度（3 行），超出内部滚动 */
+  height: 1.5rem;
   padding: 0.625rem 0.875rem;
   border: 1px solid var(--border, #e5e4e7);
   border-radius: 0.625rem;
-  font-size: 0.9375rem;
+  /* 必须 ≥16px：iOS 微信/Safari 聚焦小于 16px 的输入框会自动放大页面，且失焦不缩回 */
+  font-size: 1rem;
   font-family: inherit;
   line-height: 1.5;
   color: var(--text-h, #08060d);
@@ -102,13 +78,6 @@ function onKeydown(e: KeyboardEvent) {
   outline: none;
   overflow-y: auto;
   transition: border-color 0.2s, box-shadow 0.2s;
-}
-
-/* 空值时（显示暗文）：单行展示，超出省略号，防止暗文换行滚动 */
-.chat-input:placeholder-shown {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .chat-input:focus {
@@ -141,18 +110,6 @@ function onKeydown(e: KeyboardEvent) {
 .chat-send-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
-}
-
-/* 终止按钮：红色描边样式，与主操作区分 */
-.chat-stop-btn {
-  color: #e5484d;
-  background: #fff;
-  border: 1px solid #e5484d;
-}
-
-.chat-stop-btn:hover {
-  opacity: 1;
-  background: #fdf0f0;
 }
 
 .chat-input:disabled {

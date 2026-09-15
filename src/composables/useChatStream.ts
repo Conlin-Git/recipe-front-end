@@ -140,14 +140,16 @@ export function useChatStream() {
 
   async function send(text: string) {
     const content = text.trim()
-    if (!content || chatStore.streaming || chatStore.detachedGenerating) return
+    if (!content || chatStore.pending || chatStore.streaming || chatStore.detachedGenerating)
+      return
 
     const isNewConversation = chatStore.currentConversationId === null
 
-    // 用户消息入列 + 系统消息占位
+    // 用户消息入列 + 系统消息占位，随即进入 typing（pending）态：禁止再次输入
     chatStore.addMessage({ role: 'user', content })
     chatStore.addMessage({ role: 'assistant', content: '' })
     chatStore.setLastStreamEventId('0')
+    chatStore.setPending(true)
 
     let cid: number
     try {
@@ -159,9 +161,12 @@ export function useChatStream() {
       chatStore.appendToLastMessage(
         `⚠️ 出错了: ${e instanceof Error ? e.message : String(e)}`,
       )
+      chatStore.setPending(false)
       return
     }
 
+    // 点火成功，进入流式观看（watchStream 会置 streaming），typing 态结束
+    chatStore.setPending(false)
     chatStore.setCurrentConversation(cid)
     chatStore.addGeneratingId(cid)
     // 新会话：刷新侧边栏列表，让新会话出现

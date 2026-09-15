@@ -7,6 +7,7 @@ import BaseDialog from '../common/BaseDialog.vue'
 import UserAvatar from '../common/UserAvatar.vue'
 import { updateMe, uploadAvatar } from '../../api/user'
 import { useAuthStore } from '../../stores/auth'
+import { toast } from '../../composables/useToast'
 
 defineProps<{
   open: boolean
@@ -22,9 +23,9 @@ const auth = useAuthStore()
 
 const nickname = ref(auth.user?.nickname ?? '')
 const email = ref(auth.user?.email ?? '')
-const message = ref('')
 const error = ref('')
 const saving = ref(false)
+const avatarUploading = ref(false)
 
 // 弹窗打开时用户信息可能晚到，同步一次
 watch(
@@ -38,7 +39,6 @@ watch(
 async function handleSave() {
   if (saving.value) return
   saving.value = true
-  message.value = ''
   error.value = ''
   try {
     const user = await updateMe({
@@ -46,7 +46,9 @@ async function handleSave() {
       email: email.value || undefined,
     })
     auth.setUser(user)
-    message.value = '保存成功'
+    // 成功反馈走全局 toast，弹窗立即关闭
+    toast.success('保存成功')
+    emit('close')
   } catch (e) {
     error.value = e instanceof Error ? e.message : '保存失败'
   } finally {
@@ -55,14 +57,21 @@ async function handleSave() {
 }
 
 async function handleAvatarChange(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0]
-  if (!file) return
+  const input = e.target as HTMLInputElement
+  const raw = input.files?.[0]
+  // 清空 value：连续选同一张图也要触发 change
+  input.value = ''
+  if (!raw) return
   error.value = ''
-  message.value = ''
+  avatarUploading.value = true
   try {
-    auth.setUser(await uploadAvatar(file))
+    // 原图直接上传，压缩在后端做（上限 10MB）
+    auth.setUser(await uploadAvatar(raw))
+    toast.success('头像已更新')
   } catch (err) {
     error.value = err instanceof Error ? err.message : '头像上传失败'
+  } finally {
+    avatarUploading.value = false
   }
 }
 
@@ -78,7 +87,7 @@ function handleLogout() {
     <div class="profile-body">
       <label class="avatar-upload">
         <UserAvatar role="user" :avatar-url="auth.user?.avatar_url" :size="72" />
-        <span class="avatar-tip">点击更换头像</span>
+        <span class="avatar-tip">{{ avatarUploading ? '上传中…' : '点击更换头像' }}</span>
         <input
           type="file"
           accept="image/jpeg,image/png,image/webp"
@@ -100,7 +109,6 @@ function handleLogout() {
         <input v-model="email" placeholder="请输入邮箱" />
       </label>
 
-      <p v-if="message" class="ok">{{ message }}</p>
       <p v-if="error" class="fail">{{ error }}</p>
 
       <button class="save-btn" :disabled="saving" @click="handleSave">
@@ -156,12 +164,6 @@ function handleLogout() {
 
 .field input:disabled {
   opacity: 0.6;
-}
-
-.ok {
-  margin: 0;
-  font-size: 0.8125rem;
-  color: #2da44e;
 }
 
 .fail {

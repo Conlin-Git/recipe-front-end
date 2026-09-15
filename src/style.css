@@ -41,12 +41,18 @@
 html,
 body {
   height: 100%;
+  /* 禁止滚动链/橡皮筋效果传递到页面级 */
+  overscroll-behavior: none;
 }
 
 body {
   margin: 0;
-  /* 页面级不滚动，滚动都在内部区域 */
+  /* 页面级不滚动，滚动都在内部区域。
+     iOS 微信里 overflow:hidden 拦不住 document 滚动，需 position:fixed 兜底 */
   overflow: hidden;
+  position: fixed;
+  inset: 0;
+  width: 100%;
 }
 
 #app {

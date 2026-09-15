@@ -3,11 +3,11 @@
  * 聊天主页（单页面应用）：左侧会话列表 + 右侧（上标题 / 中消息 / 下输入）。
  * 登录/注册、个人信息均为弹窗交互，无路由跳转。
  */
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import ConversationList from '../../components/chat/ConversationList.vue'
 import MessageList from '../../components/chat/MessageList.vue'
-import ChatInput, { type InputMode } from '../../components/chat/ChatInput.vue'
+import ChatInput from '../../components/chat/ChatInput.vue'
 import UserAvatar from '../../components/common/UserAvatar.vue'
 import AuthDialog from '../../components/auth/AuthDialog.vue'
 import ProfileDialog from '../../components/profile/ProfileDialog.vue'
@@ -18,7 +18,7 @@ import { useChatStream } from '../../composables/useChatStream'
 
 const chatStore = useChatStore()
 const authStore = useAuthStore()
-const { streaming, detachedGenerating } = storeToRefs(chatStore)
+const { pending, streaming, detachedGenerating } = storeToRefs(chatStore)
 const {
   send,
   stop,
@@ -28,11 +28,6 @@ const {
   startNewConversation,
   removeConversation,
 } = useChatStream()
-
-/** 输入区三态：观看中可终止，终止后可继续输出 */
-const inputMode = computed<InputMode>(() =>
-  streaming.value ? 'streaming' : detachedGenerating.value ? 'detached' : 'idle',
-)
 
 const activeDialog = ref<'auth' | 'profile' | null>(null)
 
@@ -113,16 +108,20 @@ onMounted(async () => {
         </div>
       </header>
 
-      <!-- 中间：消息滚动区（未登录时欢迎语下展示登录/注册按钮） -->
-      <MessageList :avatar-url="authStore.user?.avatar_url" @login="activeDialog = 'auth'" />
-
-      <!-- 底部：输入框 + 发送/终止/继续输出按钮（未登录不展示） -->
-      <ChatInput
-        v-if="authStore.isLoggedIn"
-        :mode="inputMode"
-        @send="handleSend"
+      <!-- 中间：消息滚动区（未登录时欢迎语下展示登录/注册按钮；
+           生成中在流式消息下方展示停止生成/继续生成按钮） -->
+      <MessageList
+        :avatar-url="authStore.user?.avatar_url"
+        @login="activeDialog = 'auth'"
         @stop="stop"
         @resume="resume"
+      />
+
+      <!-- 底部：输入框 + 发送按钮（typing/生成中禁用；未登录不展示） -->
+      <ChatInput
+        v-if="authStore.isLoggedIn"
+        :disabled="pending || streaming || detachedGenerating"
+        @send="handleSend"
       />
     </div>
 

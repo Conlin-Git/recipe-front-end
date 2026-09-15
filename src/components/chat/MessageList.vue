@@ -14,11 +14,13 @@ defineProps<{
 
 const emit = defineEmits<{
   login: []
+  stop: []
+  resume: []
 }>()
 
 const chatStore = useChatStore()
 const authStore = useAuthStore()
-const { messages, streaming } = storeToRefs(chatStore)
+const { messages, streaming, detachedGenerating } = storeToRefs(chatStore)
 
 const listRef = ref<HTMLElement | null>(null)
 
@@ -64,6 +66,8 @@ watch(
   () => messages.value[messages.value.length - 1]?.content,
   () => scrollToBottom(),
 )
+// 停止生成/继续生成按钮出现或消失时滚到底部，保证按钮可见
+watch([streaming, detachedGenerating], () => scrollToBottom())
 
 // 步骤图原图 404 时回退到 200_ 缩略图，缩略图也挂了就隐藏占位
 //（img 的 error 不冒泡，需在容器上捕获阶段监听）
@@ -103,6 +107,14 @@ defineExpose({ scrollToBottom })
         :avatar-url="avatarUrl"
         :streaming="streaming && index === messages.length - 1 && msg.role === 'assistant'"
       />
+
+      <!-- 生成控制：流式渲染中显示「停止生成」，停止后（后端仍在生成）显示「继续生成」 -->
+      <div v-if="streaming || detachedGenerating" class="gen-control">
+        <button v-if="streaming" class="gen-btn gen-stop-btn" @click="emit('stop')">
+          停止生成
+        </button>
+        <button v-else class="gen-btn" @click="emit('resume')">继续生成</button>
+      </div>
     </main>
 
     <Transition name="fade">
@@ -145,6 +157,41 @@ defineExpose({ scrollToBottom })
   display: flex;
   flex-direction: column;
   gap: 1rem;
+}
+
+/* 停止/继续生成按钮：跟在流式消息下面，居中展示 */
+.gen-control {
+  display: flex;
+  justify-content: center;
+}
+
+.gen-btn {
+  padding: 0.375rem 1.25rem;
+  border: 1px solid var(--border, #e5e4e7);
+  border-radius: 1rem;
+  font-size: 0.8125rem;
+  font-family: inherit;
+  color: var(--text, #6b6375);
+  background: var(--bg, #fff);
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s;
+}
+
+.gen-btn:hover {
+  color: var(--accent, #aa3bff);
+  border-color: var(--accent, #aa3bff);
+}
+
+/* 停止生成：红色描边，与继续生成的主操作样式区分 */
+.gen-stop-btn {
+  color: #e5484d;
+  border-color: #e5484d;
+}
+
+.gen-stop-btn:hover {
+  color: #e5484d;
+  border-color: #e5484d;
+  background: #fdf0f0;
 }
 
 .back-to-bottom {
