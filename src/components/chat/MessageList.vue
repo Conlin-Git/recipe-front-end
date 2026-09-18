@@ -94,7 +94,7 @@ defineExpose({ scrollToBottom })
     >
       <div v-if="messages.length === 0" class="chat-empty">
         <p>哟，来啦！我是 Conlin 🍳</p>
-        <p>白天写代码，下班颠勺，川菜随便问，前后端、AI Agent 也能唠～</p>
+        <p>白天写代码，下班颠勺，天南海北的菜随便问，JS 红宝书我倒背如流～</p>
         <button v-if="!authStore.isLoggedIn" class="welcome-login-btn" @click="emit('login')">
           登录 / 注册
         </button>
