@@ -8,7 +8,7 @@ import { storeToRefs } from 'pinia'
 import { useChatStore } from '../../stores/chat'
 
 const chatStore = useChatStore()
-const { conversations, currentConversationId } = storeToRefs(chatStore)
+const { conversations, currentConversationId, generatingIds } = storeToRefs(chatStore)
 
 const emit = defineEmits<{
   select: [id: number]
@@ -58,6 +58,17 @@ defineExpose({
         @click="handleSelect(conv.id)"
       >
         <span class="title">{{ conv.title }}</span>
+        <!-- 生成中：脉动点（切走后后端仍在生成）；完成后未读：红点（当前会话不打） -->
+        <span
+          v-if="generatingIds.includes(conv.id)"
+          class="gen-dot"
+          title="正在生成中"
+        ></span>
+        <span
+          v-else-if="conv.unread && conv.id !== currentConversationId"
+          class="unread-dot"
+          title="有新回复"
+        ></span>
         <span class="delete" title="删除会话" @click.stop="emit('remove', conv.id)">×</span>
       </li>
       <li v-if="conversations.length === 0" class="empty">暂无历史会话</li>
@@ -204,6 +215,30 @@ defineExpose({
   white-space: nowrap;
 }
 
+/* 生成中脉动点：主题色呼吸动画 */
+.gen-dot {
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--accent, #aa3bff);
+  animation: gen-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes gen-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+/* 未读红点：后台生成完成的新回复 */
+.unread-dot {
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #e5484d;
+}
+
 .delete {
   flex-shrink: 0;
   padding: 0 0.25rem;
@@ -228,11 +263,13 @@ defineExpose({
   align-items: center;
   justify-content: center;
   gap: 0.375rem;
-  margin-top: 0.625rem;
-  padding: 0.5rem;
+  /* 负边距拉满抽屉宽度：border-top 成为通栏分隔线。
+     按钮自身不能带圆角——圆角会把仅有的上边框两端切弯（断线感） */
+  margin: 0.625rem -0.75rem -0.75rem;
+  padding: 0.75rem;
   border: none;
   border-top: 1px solid var(--border, #e5e4e7);
-  border-radius: 0.5rem;
+  border-radius: 0;
   background: transparent;
   font-family: inherit;
   font-size: 0.875rem;

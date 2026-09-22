@@ -27,6 +27,9 @@ const {
   selectConversation,
   startNewConversation,
   removeConversation,
+  startPolling,
+  stopPolling,
+  loadOlderMessages,
 } = useChatStream()
 
 const activeDialog = ref<'auth' | 'profile' | null>(null)
@@ -44,10 +47,12 @@ function handleSend(text: string) {
 }
 
 async function handleAuthSuccess() {
+  startPolling() // 后台生成轮询：生成中动画/完成后未读红点
   await loadLatestConversation()
 }
 
 function handleLogout() {
+  stopPolling()
   chatStore.setConversations([])
   chatStore.resetConversation()
 }
@@ -62,6 +67,7 @@ onMounted(async () => {
       return // 401 时 request.ts 已 logout
     }
   }
+  startPolling()
   await loadLatestConversation()
 })
 </script>
@@ -112,6 +118,7 @@ onMounted(async () => {
            生成中在流式消息下方展示停止生成/继续生成按钮） -->
       <MessageList
         :avatar-url="authStore.user?.avatar_url"
+        :load-more="loadOlderMessages"
         @login="activeDialog = 'auth'"
         @stop="stop"
         @resume="resume"
@@ -123,6 +130,13 @@ onMounted(async () => {
         :disabled="pending || streaming || detachedGenerating"
         @send="handleSend"
       />
+
+      <!-- ICP 备案页脚：要求常驻页面底部并链接工信部备案系统，小字半透明弱化存在感 -->
+      <footer class="icp-footer">
+        <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">
+          粤ICP备2026143546号
+        </a>
+      </footer>
     </div>
 
     <!-- 弹窗：登录/注册、个人信息（常驻挂载，open 控制显隐以支持退场动画） -->
@@ -242,6 +256,26 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ICP 备案页脚：极窄一条，小字半透明，不抢视觉 */
+.icp-footer {
+  flex-shrink: 0;
+  padding: 0.25rem;
+  text-align: center;
+  font-size: 0.6875rem;
+  line-height: 1;
+}
+
+.icp-footer a {
+  color: var(--text, #6b6375);
+  opacity: 0.4;
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+.icp-footer a:hover {
+  opacity: 0.8;
 }
 
 </style>

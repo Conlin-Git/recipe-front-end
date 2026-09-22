@@ -1,9 +1,17 @@
 export interface Message {
+  /** 服务端消息 id（历史分页游标）；流式期间的本地占位消息没有 */
+  id?: number
   role: 'user' | 'assistant'
   /** 原始 Markdown 文本（用于多轮 history 回传） */
   content: string
   /** 后端渲染好的完整 HTML（assistant 消息直接 v-html 展示） */
   html?: string
+}
+
+/** 历史消息分页：首屏最近一页，更早的下拉加载 */
+export interface MessagePage {
+  messages: Message[]
+  has_more: boolean
 }
 
 export interface Conversation {
@@ -13,6 +21,8 @@ export interface Conversation {
   updated_at: string
   /** 后端是否有生成任务在进行（刷新页面后据此自动续看） */
   generating?: boolean
+  /** 是否有未读消息（后台生成完成的回答等），侧边栏打红点 */
+  unread?: boolean
 }
 
 /** SSE 流式回调（生成与连接解耦版：事件带断点 id，可断线重连） */

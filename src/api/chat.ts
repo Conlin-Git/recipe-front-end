@@ -1,17 +1,33 @@
 import { BASE_URL, request } from './request'
 import { useAuthStore } from '../stores/auth'
-import type { Conversation, Message, StreamCallbacks } from '../types/chat'
+import type { Conversation, MessagePage, StreamCallbacks } from '../types/chat'
 
 export function listConversations() {
   return request<Conversation[]>('/conversations')
 }
 
-export function getHistory(conversationId: number) {
-  return request<Message[]>(`/conversations/${conversationId}/messages`)
+/** 历史消息分页：beforeId 为空取最新一页（首屏），否则取更早一页（下拉加载） */
+export function getHistory(conversationId: number, beforeId?: number) {
+  const query = beforeId ? `?before_id=${beforeId}` : ''
+  return request<MessagePage>(`/conversations/${conversationId}/messages${query}`)
 }
 
 export function deleteConversation(conversationId: number) {
   return request<void>(`/conversations/${conversationId}`, { method: 'DELETE' })
+}
+
+/** 显式已读：观看中的生成刚完成时补调（消息落库晚于上次查看历史） */
+export function markConversationRead(conversationId: number) {
+  return request<void>(`/conversations/${conversationId}/read`, { method: 'POST' })
+}
+
+/**
+ * 手动停止生成：真正中断后端任务（协作式），已输出的部分被抛弃，
+ * 历史里只留用户问题。与断开 SSE（断网/切换会话）不同——那些只是
+ * 停止观看，后端继续生成。
+ */
+export function stopChat(conversationId: number) {
+  return request<void>(`/chat/${conversationId}/stop`, { method: 'POST' })
 }
 
 /**
@@ -54,7 +70,13 @@ export async function subscribeStream(
     throw new Error('登录已过期，请重新登录')
   }
   if (!resp.ok || !resp.body) {
-    throw new Error(`请求失败: ${resp.status}`)
+    // 错误响应也是标准封装 {code, data, msg}，尽量带出服务端信息
+    let msg = `请求失败: ${resp.status}`
+    try {
+      const body = await resp.json()
+      if (body?.msg) msg = body.msg
+    } catch { /* 非 JSON 时用默认信息 */ }
+    throw new Error(msg)
   }
 
   const reader = resp.body.getReader()
@@ -84,7 +106,8 @@ export async function subscribeStream(
           callbacks.onToken(parsed.delta, parsed.html)
         } else if (parsed.type === 'error') {
           callbacks.onError(parsed.message)
-        } else if (parsed.type === 'done') {
+        } else if (parsed.type === 'done' || parsed.type === 'stopped') {
+          // stopped = 手动停止的终态（部分回答已落库），按完成处理
           callbacks.onDone?.()
         }
       } catch {

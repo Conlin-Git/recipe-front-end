@@ -3,29 +3,61 @@
  *
  * 生成与连接解耦（见后端 stream_service）：
  * - send 只点火（POST /chat），生成在服务端后台进行，token 缓存进 Redis Stream
- * - watchStream 订阅 SSE（可带断点 lastId 重连），支持终止观看（stop）/
+ * - watchStream 订阅 SSE（可带断点 lastId 重连），支持停止生成（stop，真取消）/
  *   继续输出（resume）/ 断网自动重连 / 刷新页面自动续看
+ * - 生成中可自由切换会话：切走只是停止观看，后端继续生成；侧边栏显示
+ *   生成中动画，完成后（你不在这个会话时）由服务端 unread 标志打未读红点，
+ *   靠 startPolling 定期同步
  * 上下文由服务端按 conversation_id 维护（Redis + MySQL）。
  */
 import {
   deleteConversation,
   getHistory,
   listConversations,
+  markConversationRead,
   startChat,
+  stopChat,
   subscribeStream,
 } from '../api/chat'
+import { ApiError } from '../api/request'
 import { useChatStore } from '../stores/chat'
 
 /** 断线自动重连次数上限（指数退避 1s/2s/4s） */
 const MAX_RETRY = 3
 
+/** 后台生成轮询间隔：有会话在生成时同步列表（生成中动画/未读红点） */
+const POLL_INTERVAL = 5000
+
 export function useChatStream() {
   const chatStore = useChatStore()
   let abortController: AbortController | null = null
+  let pollTimer: ReturnType<typeof setInterval> | null = null
 
   async function loadConversations() {
     // setConversations 会顺带同步 generatingIds（服务端生成中标记）
     chatStore.setConversations(await listConversations())
+  }
+
+  /** 后台生成轮询：登录后启动，生成中的会话完成后未读红点靠它及时出现 */
+  function startPolling() {
+    if (pollTimer) return
+    pollTimer = setInterval(() => {
+      if (chatStore.generatingIds.length > 0) loadConversations()
+    }, POLL_INTERVAL)
+  }
+
+  function stopPolling() {
+    if (pollTimer) {
+      clearInterval(pollTimer)
+      pollTimer = null
+    }
+  }
+
+  /** 断开当前观看（≠停止生成）：切换会话/新对话/停止生成时调用，后端不受影响 */
+  function stopWatching() {
+    abortController?.abort()
+    abortController = null
+    chatStore.setStreaming(false)
   }
 
   /** 加载会话列表并自动进入最近一个会话（列表按更新时间倒序，第一个即最近） */
@@ -34,23 +66,42 @@ export function useChatStream() {
     const latest = chatStore.conversations[0]
     if (latest && latest.id !== chatStore.currentConversationId) {
       chatStore.setCurrentConversation(latest.id)
-      chatStore.setMessages(await getHistory(latest.id))
+      const page = await getHistory(latest.id)
+      chatStore.setMessages(page.messages, page.has_more)
+      chatStore.markConversationRead(latest.id)
       await maybeResumeGenerating(latest.id)
     }
   }
 
   async function selectConversation(id: number) {
-    if (chatStore.streaming || id === chatStore.currentConversationId) return
+    if (id === chatStore.currentConversationId) return
+    // 生成中也可自由切换：切走只是停止观看，后端继续生成（完成后来未读红点）
+    stopWatching()
     chatStore.setCurrentConversation(id)
     // 终止态和断点都绑定具体会话，切换时重置
     chatStore.setDetachedGenerating(false)
     chatStore.setLastStreamEventId('0')
-    chatStore.setMessages(await getHistory(id))
+    // 首屏只取最近一页（够上下文即可），更早的下拉加载
+    const page = await getHistory(id)
+    chatStore.setMessages(page.messages, page.has_more)
+    // getHistory 服务端查看即已读，本地同步清红点
+    chatStore.markConversationRead(id)
     await maybeResumeGenerating(id)
   }
 
+  /** 下拉加载更早的历史：以当前最早一条消息的 id 为游标，取更早一页前插 */
+  async function loadOlderMessages() {
+    const cid = chatStore.currentConversationId
+    const firstId = chatStore.messages[0]?.id
+    if (!cid || !firstId || !chatStore.hasMoreHistory) return
+    const page = await getHistory(cid, firstId)
+    chatStore.prependMessages(page.messages)
+    chatStore.setHasMoreHistory(page.has_more)
+  }
+
   function startNewConversation() {
-    if (chatStore.streaming) return
+    // 生成中也可开新对话：旧会话后台继续，完成后打未读
+    stopWatching()
     chatStore.resetConversation()
   }
 
@@ -103,7 +154,13 @@ export function useChatStream() {
       chatStore.removeGeneratingId(cid)
       if (!receivedAny && chatStore.currentConversationId === cid) {
         // 缓冲已过期等场景：拉历史兜底，保证最终回答能显示
-        chatStore.setMessages(await getHistory(cid))
+        const page = await getHistory(cid)
+        chatStore.setMessages(page.messages, page.has_more)
+      }
+      // 回答落库晚于进入会话时的已读标记：正在观看的当前会话补一次已读
+      if (chatStore.currentConversationId === cid) {
+        chatStore.markConversationRead(cid)
+        markConversationRead(cid).catch(() => {})
       }
       loadConversations() // 刷新列表：updated_at 和 generating 标志
     } catch (e) {
@@ -174,11 +231,31 @@ export function useChatStream() {
     await watchStream(cid, '0')
   }
 
-  /** 终止观看：只断开本地连接，后端继续生成完（token 都在缓存里） */
-  function stop() {
-    abortController?.abort()
-    chatStore.setStreaming(false)
-    chatStore.setDetachedGenerating(true)
+  /**
+   * 停止生成：真正中断后端任务（唯一会终止生成的操作）。
+   * 已输出的部分被后端抛弃、只留用户问题，拉历史对齐后输入框立即可用。
+   */
+  async function stop() {
+    const cid = chatStore.currentConversationId
+    if (!cid) return
+    try {
+      await stopChat(cid)
+    } catch (e) {
+      // 409 = 生成刚好已完成：同样走收尾刷新；其他错误保持观看并提示
+      if (!(e instanceof ApiError && e.status === 409)) {
+        chatStore.appendToLastMessage(
+          `⚠️ 停止失败: ${e instanceof Error ? e.message : String(e)}`,
+        )
+        return
+      }
+    }
+    stopWatching()
+    chatStore.removeGeneratingId(cid)
+    // 后端只落库了用户问题（部分输出已抛弃）：拉历史对齐（顺带标已读）
+    const page = await getHistory(cid)
+    chatStore.setMessages(page.messages, page.has_more)
+    chatStore.markConversationRead(cid)
+    loadConversations()
   }
 
   /** 继续输出：从断点重连，重放缓存后接上实时流 */
@@ -203,5 +280,8 @@ export function useChatStream() {
     selectConversation,
     startNewConversation,
     removeConversation,
+    startPolling,
+    stopPolling,
+    loadOlderMessages,
   }
 }

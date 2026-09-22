@@ -9,12 +9,14 @@ interface ChatState {
   pending: boolean
   /** 当前会话：正在观看流式输出 */
   streaming: boolean
-  /** 当前会话：后端还在生成，但用户已终止观看（可点「继续输出」重连） */
+  /** 当前会话：后端还在生成，但观看连接中断（断网重连失败，可点「继续输出」重连） */
   detachedGenerating: boolean
   /** 后端有生成任务在跑的会话（从列表接口的 generating 标志同步） */
   generatingIds: number[]
   /** 当前订阅的断点（流 entry id），断线重连/继续输出用 */
   lastStreamEventId: string
+  /** 当前会话是否还有更早的历史可下拉加载 */
+  hasMoreHistory: boolean
 }
 
 export const useChatStore = defineStore('chat', {
@@ -27,6 +29,7 @@ export const useChatStore = defineStore('chat', {
     detachedGenerating: false,
     generatingIds: [],
     lastStreamEventId: '0',
+    hasMoreHistory: false,
   }),
   actions: {
     setConversations(list: Conversation[]) {
@@ -37,8 +40,16 @@ export const useChatStore = defineStore('chat', {
     setCurrentConversation(id: number | null) {
       this.currentConversationId = id
     },
-    setMessages(list: Message[]) {
+    setMessages(list: Message[], hasMore = false) {
       this.messages = list
+      this.hasMoreHistory = hasMore
+    },
+    /** 下拉加载到的更早历史：前插（保持滚动位置由 MessageList 负责） */
+    prependMessages(list: Message[]) {
+      this.messages.unshift(...list)
+    },
+    setHasMoreHistory(value: boolean) {
+      this.hasMoreHistory = value
     },
     addMessage(msg: Message) {
       this.messages.push(msg)
@@ -71,12 +82,18 @@ export const useChatStore = defineStore('chat', {
     setLastStreamEventId(id: string) {
       this.lastStreamEventId = id
     },
+    /** 本地清未读红点（打开会话/观看完成时调用，服务端由接口侧标记） */
+    markConversationRead(id: number) {
+      const conv = this.conversations.find((c) => c.id === id)
+      if (conv) conv.unread = false
+    },
     /** 新对话：清空当前会话状态 */
     resetConversation() {
       this.currentConversationId = null
       this.messages = []
       this.detachedGenerating = false
       this.lastStreamEventId = '0'
+      this.hasMoreHistory = false
     },
     removeConversation(id: number) {
       this.conversations = this.conversations.filter((c) => c.id !== id)

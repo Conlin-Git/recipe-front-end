@@ -8,8 +8,10 @@ import { useChatStore } from '../../stores/chat'
 import { useAuthStore } from '../../stores/auth'
 import MessageItem from './MessageItem.vue'
 
-defineProps<{
+const props = defineProps<{
   avatarUrl?: string | null
+  /** 下拉加载更早历史（滚动到顶部触发），由父组件向服务端取数 */
+  loadMore?: () => Promise<void>
 }>()
 
 const emit = defineEmits<{
@@ -20,7 +22,8 @@ const emit = defineEmits<{
 
 const chatStore = useChatStore()
 const authStore = useAuthStore()
-const { messages, streaming, detachedGenerating } = storeToRefs(chatStore)
+const { messages, streaming, detachedGenerating, hasMoreHistory } =
+  storeToRefs(chatStore)
 
 const listRef = ref<HTMLElement | null>(null)
 
@@ -28,11 +31,32 @@ const listRef = ref<HTMLElement | null>(null)
 const BOTTOM_THRESHOLD = 200
 const showBackToBottom = ref(false)
 
+// 下拉加载更早历史：滚动到顶部附近触发；加载期间冻结自动滚动
+const TOP_THRESHOLD = 60
+const loadingOlder = ref(false)
+
+async function handleLoadMore() {
+  const el = listRef.value
+  if (!el || !props.loadMore || loadingOlder.value || !hasMoreHistory.value) return
+  loadingOlder.value = true
+  // 记住加载前滚动高度，前插后补偿，让视口停在原来的消息上
+  const prevHeight = el.scrollHeight
+  const prevTop = el.scrollTop
+  try {
+    await props.loadMore()
+    await nextTick()
+    el.scrollTop = el.scrollHeight - prevHeight + prevTop
+  } finally {
+    loadingOlder.value = false
+  }
+}
+
 function handleScroll() {
   const el = listRef.value
   if (!el) return
   showBackToBottom.value =
     el.scrollHeight - el.scrollTop - el.clientHeight > BOTTOM_THRESHOLD
+  if (el.scrollTop < TOP_THRESHOLD) handleLoadMore()
 }
 
 // rAF 节流：流式输出时每个 token 都触发 watch，
@@ -57,10 +81,13 @@ async function scrollToBottom(smooth = false) {
   })
 }
 
-// 新消息来临（平滑滚动）或流式内容更新（即时滚动）时滚到底部
+// 新消息来临（平滑滚动）或流式内容更新（即时滚动）时滚到底部；
+// 下拉加载前插历史时不要滚（视口位置由 handleLoadMore 补偿）
 watch(
   () => messages.value.length,
-  () => scrollToBottom(true),
+  () => {
+    if (!loadingOlder.value) scrollToBottom(true)
+  },
 )
 watch(
   () => messages.value[messages.value.length - 1]?.content,
@@ -92,6 +119,15 @@ defineExpose({ scrollToBottom })
       @scroll.passive="handleScroll"
       @error.capture="handleImgError"
     >
+      <!-- 顶部：下拉加载状态（到顶自动加载更早历史） -->
+      <div v-if="loadingOlder" class="history-loading">加载更早的消息…</div>
+      <div
+        v-else-if="messages.length > 0 && !hasMoreHistory"
+        class="history-loading"
+      >
+        没有更早的消息了
+      </div>
+
       <div v-if="messages.length === 0" class="chat-empty">
         <p>哟，来啦！我是 Conlin 🍳</p>
         <p>白天写代码，下班颠勺，天南海北的菜随便问，JS 红宝书我倒背如流～</p>
@@ -233,6 +269,15 @@ defineExpose({ scrollToBottom })
   text-align: center;
   color: var(--text, #6b6375);
   line-height: 2;
+}
+
+/* 顶部下拉加载提示：小字弱化，不抢视觉 */
+.history-loading {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text, #6b6375);
+  opacity: 0.5;
+  padding-bottom: 0.25rem;
 }
 
 .welcome-login-btn {

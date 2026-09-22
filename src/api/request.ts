@@ -35,13 +35,20 @@ export async function request<T>(
     auth.logout()
     throw new ApiError(401, '未登录或登录已过期')
   }
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({}))
-    throw new ApiError(resp.status, body.message ?? `请求失败: ${resp.status}`)
-  }
   // 204 No Content
   if (resp.status === 204) return undefined as T
-  return resp.json()
+  // 标准封装：{code, data, msg}——code 0 正常，其他异常（HTTP 状态码保留语义）
+  const body = await resp.json().catch(() => null)
+  if (!resp.ok) {
+    throw new ApiError(resp.status, body?.msg ?? `请求失败: ${resp.status}`)
+  }
+  if (body && typeof body === 'object' && 'code' in body) {
+    if (body.code !== 0) {
+      throw new ApiError(resp.status, body.msg || '请求失败')
+    }
+    return body.data as T
+  }
+  return body as T
 }
 
 export { BASE_URL }
