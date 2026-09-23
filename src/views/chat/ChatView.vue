@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * 聊天主页（单页面应用）：左侧会话列表 + 右侧（上标题 / 中消息 / 下输入）。
- * 登录/注册、个人信息均为弹窗交互，无路由跳转。
+ * 登录/注册、个人信息、设置均为弹窗交互，无路由跳转。
  */
 import { onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
@@ -11,6 +11,7 @@ import ChatInput from '../../components/chat/ChatInput.vue'
 import UserAvatar from '../../components/common/UserAvatar.vue'
 import AuthDialog from '../../components/auth/AuthDialog.vue'
 import ProfileDialog from '../../components/profile/ProfileDialog.vue'
+import SettingsDialog from '../../components/settings/SettingsDialog.vue'
 import { useChatStore } from '../../stores/chat'
 import { useAuthStore } from '../../stores/auth'
 import { getMe } from '../../api/user'
@@ -32,7 +33,7 @@ const {
   loadOlderMessages,
 } = useChatStream()
 
-const activeDialog = ref<'auth' | 'profile' | null>(null)
+const activeDialog = ref<'auth' | 'profile' | 'settings' | null>(null)
 
 /** 会话列表抽屉引用，头部按钮触发展开 */
 const conversationListRef = ref<InstanceType<typeof ConversationList> | null>(null)
@@ -81,7 +82,7 @@ onMounted(async () => {
       @select="selectConversation"
       @create="startNewConversation"
       @remove="removeConversation"
-      @settings="activeDialog = 'profile'"
+      @settings="activeDialog = 'settings'"
     />
 
     <div class="chat-container">
@@ -131,8 +132,8 @@ onMounted(async () => {
         @send="handleSend"
       />
 
-      <!-- ICP 备案页脚：要求常驻页面底部并链接工信部备案系统，小字半透明弱化存在感 -->
-      <footer class="icp-footer">
+      <!-- ICP 备案页脚：仅未登录（欢迎页）展示；登录后收进左侧栏「设置 → 关于我们」 -->
+      <footer v-if="!authStore.isLoggedIn" class="icp-footer">
         <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">
           粤ICP备2026143546号
         </a>
@@ -147,6 +148,10 @@ onMounted(async () => {
     />
     <ProfileDialog
       :open="activeDialog === 'profile'"
+      @close="activeDialog = null"
+    />
+    <SettingsDialog
+      :open="activeDialog === 'settings'"
       @close="activeDialog = null"
       @logout="handleLogout"
     />

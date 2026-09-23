@@ -98,13 +98,16 @@ watch([streaming, detachedGenerating], () => scrollToBottom())
 
 // 步骤图原图 404 时回退到 200_ 缩略图，缩略图也挂了就隐藏占位
 //（img 的 error 不冒泡，需在容器上捕获阶段监听）
+// 注意：永不重新赋值相同 URL——空 src（解析成页面 URL）或以 / 结尾的 src
+// 会让 replace 匹配不到、赋回原值，触发 error → 重赋值 → error 的死循环
 function handleImgError(e: Event) {
   const img = e.target
   if (!(img instanceof HTMLImageElement)) return
-  if (!img.src.includes('/200_')) {
-    img.src = img.src.replace(/\/([^/]+)$/, '/200_$1')
-  } else {
+  const next = img.src.replace(/\/([^/]+)$/, '/200_$1')
+  if (img.src.includes('/200_') || next === img.src) {
     img.style.visibility = 'hidden'
+  } else {
+    img.src = next
   }
 }
 

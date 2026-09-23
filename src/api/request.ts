@@ -31,14 +31,16 @@ export async function request<T>(
 
   const resp = await fetch(`${BASE_URL}${path}`, { ...options, headers })
 
-  if (resp.status === 401) {
-    auth.logout()
-    throw new ApiError(401, '未登录或登录已过期')
-  }
   // 204 No Content
   if (resp.status === 204) return undefined as T
   // 标准封装：{code, data, msg}——code 0 正常，其他异常（HTTP 状态码保留语义）
   const body = await resp.json().catch(() => null)
+  if (resp.status === 401) {
+    // 带 token 的 401 = 登录过期（清登录态）；登录接口自身的 401（密码错误）
+    // 没有 token，直接用后端 msg 提示，不误报「登录过期」
+    if (auth.token) auth.logout()
+    throw new ApiError(401, body?.msg ?? '未登录或登录已过期')
+  }
   if (!resp.ok) {
     throw new ApiError(resp.status, body?.msg ?? `请求失败: ${resp.status}`)
   }

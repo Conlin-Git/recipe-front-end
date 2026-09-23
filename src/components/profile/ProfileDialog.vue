@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 个人信息弹窗：昵称/邮箱修改 + 头像上传 + 退出登录。
+ * 个人信息弹窗：昵称修改 + 头像上传。（退出登录在「设置」弹窗里）
  */
 import { ref, watch } from 'vue'
 import BaseDialog from '../common/BaseDialog.vue'
@@ -15,14 +15,11 @@ defineProps<{
 
 const emit = defineEmits<{
   close: []
-  /** 退出登录后触发（父组件清空会话状态） */
-  logout: []
 }>()
 
 const auth = useAuthStore()
 
 const nickname = ref(auth.user?.nickname ?? '')
-const email = ref(auth.user?.email ?? '')
 const error = ref('')
 const saving = ref(false)
 const avatarUploading = ref(false)
@@ -32,7 +29,6 @@ watch(
   () => auth.user,
   (user) => {
     nickname.value = user?.nickname ?? ''
-    email.value = user?.email ?? ''
   },
 )
 
@@ -43,7 +39,6 @@ async function handleSave() {
   try {
     const user = await updateMe({
       nickname: nickname.value || undefined,
-      email: email.value || undefined,
     })
     auth.setUser(user)
     // 成功反馈走全局 toast，弹窗立即关闭
@@ -75,11 +70,6 @@ async function handleAvatarChange(e: Event) {
   }
 }
 
-function handleLogout() {
-  auth.logout()
-  emit('logout')
-  emit('close')
-}
 </script>
 
 <template>
@@ -104,17 +94,12 @@ function handleLogout() {
         <span>昵称</span>
         <input v-model="nickname" placeholder="请输入昵称" />
       </label>
-      <label class="field">
-        <span>邮箱</span>
-        <input v-model="email" placeholder="请输入邮箱" />
-      </label>
 
       <p v-if="error" class="fail">{{ error }}</p>
 
       <button class="save-btn" :disabled="saving" @click="handleSave">
         {{ saving ? '保存中…' : '保存' }}
       </button>
-      <button class="logout-btn" @click="handleLogout">退出登录</button>
     </div>
   </BaseDialog>
 </template>
@@ -185,15 +170,5 @@ function handleLogout() {
 
 .save-btn:disabled {
   opacity: 0.4;
-}
-
-.logout-btn {
-  padding: 0.625rem;
-  border: 1px solid var(--border, #e5e4e7);
-  border-radius: 0.5rem;
-  font-size: 0.9375rem;
-  color: var(--text, #6b6375);
-  background: transparent;
-  cursor: pointer;
 }
 </style>

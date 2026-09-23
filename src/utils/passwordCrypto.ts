@@ -6,6 +6,7 @@
 import { request } from '../api/request'
 
 let cachedKey: CryptoKey | null = null
+let pendingKey: Promise<CryptoKey> | null = null
 
 /** PEM 转 DER：去头尾和换行后 base64 解码 */
 function pemToDer(pem: string): ArrayBuffer {
@@ -16,20 +17,34 @@ function pemToDer(pem: string): ArrayBuffer {
   return bytes.buffer
 }
 
+/** 公钥整个页面会话只拉一次：结果缓存 + 并发请求去重（预热和登录撞车时合并） */
 async function getPublicKey(): Promise<CryptoKey> {
   if (cachedKey) return cachedKey
-  const { public_key } = await request<{ public_key: string }>('/auth/public-key')
-  cachedKey = await crypto.subtle.importKey(
-    'spki',
-    pemToDer(public_key),
-    { name: 'RSA-OAEP', hash: 'SHA-256' },
-    false,
-    ['encrypt'],
-  )
-  return cachedKey
+  pendingKey ??= (async () => {
+    try {
+      const { public_key } = await request<{ public_key: string }>('/auth/public-key')
+      cachedKey = await crypto.subtle.importKey(
+        'spki',
+        pemToDer(public_key),
+        { name: 'RSA-OAEP', hash: 'SHA-256' },
+        false,
+        ['encrypt'],
+      )
+      return cachedKey
+    } finally {
+      pendingKey = null
+    }
+  })()
+  return pendingKey
 }
 
-/** 后端重启（开发环境临时密钥轮换）后公钥会换，调用方失败时可清缓存重试 */
+/** 进入页面时预热公钥（fire-and-forget）：点开登录框时加密零等待、零额外请求 */
+export function warmPublicKey() {
+  getPublicKey().catch(() => {})
+}
+
+/** 后端重启（开发环境临时密钥轮换）后公钥会换：仅密文无效（400）时调用，
+ *  密码错误（401）等业务失败不要清——否则每次登录失败都会重拉公钥 */
 export function clearCachedPublicKey() {
   cachedKey = null
 }
