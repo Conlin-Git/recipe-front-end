@@ -99,7 +99,6 @@ onMounted(async () => {
           </button>
         </div>
         <div class="chat-header-center">
-          <span class="chat-header-icon">🍳</span>
           <h1 class="chat-header-title">Conlin</h1>
         </div>
         <div class="chat-header-right">
