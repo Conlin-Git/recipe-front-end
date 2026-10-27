@@ -84,6 +84,22 @@ npm run build      # vue-tsc 类型检查 + 生产构建
 npm run preview    # 本地预览构建产物
 ```
 
+## 公安备案期间免登录访问
+
+在后端实际运行环境中，用与服务相同的配置执行：
+
+```bash
+.venv/bin/python -m scripts.create_filing_review_session --frontend-env ../recipe-front-end/.env.production.local
+```
+
+脚本会新建独立审核账号，并把固定 **30 天**有效的 JWT 写入前端 `.env.production.local`。随后在本仓库执行 `npm run build` 并部署 `dist/`，全新浏览器打开页面即可直接查看内容和使用问答。配置在构建时注入，修改环境文件后必须重新构建。
+
+内置凭证为公开展示用途，访问者共用该审核账号的对话历史；不要复用个人账号或录入私人内容。审核态不显示个人资料、退出登录和删除会话入口，后端也会拒绝对应操作；正常个人登录态仍优先使用。30 天从签发时计算，不随打开页面或刷新而延长，到期恢复登录入口。
+
+审核结束后删除 `VITE_FILING_REVIEW_TOKEN` 配置并重新构建部署，即可撤下自动登录。需要让旧构建中的凭证立即失效时，在后端执行 `security.revoke_token(token)`（现有 Redis 吊销机制）；仅撤下前端配置不会提前改变 JWT 的服务端有效期。
+
+登录态回归测试：`npm run test:auth`（Node.js 需满足当前 Vite 版本要求）。
+
 ## 后端接口依赖
 
 前端消费后端 `/api/v1` 下的接口：`POST /chat`（点火）、`GET /chat/{id}/stream`（SSE 订阅）、`POST /chat/{id}/stop`（停止生成）、`GET /auth/public-key`（密码加密公钥）、`POST /auth/register|login`、`GET|DELETE /conversations`、`GET /conversations/{id}/messages?before_id=`（游标分页）、`POST /conversations/{id}/read`（已读）、`GET|PUT /users/me`、`POST /users/me/avatar`。菜谱步骤配图经 `GET /image-proxy/{host}/{path}` 中转。所有 JSON 响应均为 `{code, data, msg}` 标准封装，详见后端 README 的 API 概览。

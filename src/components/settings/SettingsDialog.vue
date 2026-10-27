@@ -47,7 +47,7 @@ function handleLogout() {
         </div>
       </section>
 
-      <button class="logout-btn" @click="handleLogout">退出登录</button>
+      <button v-if="!auth.isReviewSession" class="logout-btn" @click="handleLogout">退出登录</button>
     </div>
   </BaseDialog>
 </template>

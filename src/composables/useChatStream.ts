@@ -282,6 +282,7 @@ export function useChatStream() {
     removeConversation,
     startPolling,
     stopPolling,
+    stopWatching,
     loadOlderMessages,
   }
 }

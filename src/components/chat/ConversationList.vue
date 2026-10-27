@@ -6,8 +6,10 @@
 import { ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useChatStore } from '../../stores/chat'
+import { useAuthStore } from '../../stores/auth'
 
 const chatStore = useChatStore()
+const authStore = useAuthStore()
 const { conversations, currentConversationId, generatingIds } = storeToRefs(chatStore)
 
 const emit = defineEmits<{
@@ -69,7 +71,7 @@ defineExpose({
           class="unread-dot"
           title="有新回复"
         ></span>
-        <span class="delete" title="删除会话" @click.stop="emit('remove', conv.id)">×</span>
+        <span v-if="!authStore.isReviewSession" class="delete" title="删除会话" @click.stop="emit('remove', conv.id)">×</span>
       </li>
       <li v-if="conversations.length === 0" class="empty">暂无历史会话</li>
     </ul>

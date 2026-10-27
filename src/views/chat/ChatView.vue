@@ -3,7 +3,7 @@
  * 聊天主页（单页面应用）：左侧会话列表 + 右侧（上标题 / 中消息 / 下输入）。
  * 登录/注册、个人信息、设置均为弹窗交互，无路由跳转。
  */
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import ConversationList from '../../components/chat/ConversationList.vue'
 import MessageList from '../../components/chat/MessageList.vue'
@@ -30,6 +30,7 @@ const {
   removeConversation,
   startPolling,
   stopPolling,
+  stopWatching,
   loadOlderMessages,
 } = useChatStream()
 
@@ -54,18 +55,30 @@ async function handleAuthSuccess() {
 
 function handleLogout() {
   stopPolling()
+  stopWatching()
   chatStore.setConversations([])
   chatStore.resetConversation()
 }
+
+watch(() => authStore.token, (token) => {
+  if (!token) handleLogout()
+})
 
 onMounted(async () => {
   if (!authStore.isLoggedIn) return
   // 刷新页面时 token 还在但 user 为空，补拉用户信息（token过期会401并自动logout）
   if (!authStore.user) {
+    const wasReviewSession = authStore.isReviewSession
     try {
       authStore.setUser(await getMe())
     } catch {
-      return // 401 时 request.ts 已 logout
+      // 浏览器中的个人 token 被吊销时，仍可回退到内置审核态。
+      if (wasReviewSession || authStore.token || !authStore.useReviewSession()) return
+      try {
+        authStore.setUser(await getMe())
+      } catch {
+        return
+      }
     }
   }
   startPolling()
@@ -103,7 +116,7 @@ onMounted(async () => {
         </div>
         <div class="chat-header-right">
           <button
-            v-if="authStore.isLoggedIn"
+            v-if="authStore.isLoggedIn && !authStore.isReviewSession"
             class="chat-header-user"
             title="个人信息"
             @click="activeDialog = 'profile'"
@@ -131,8 +144,8 @@ onMounted(async () => {
         @send="handleSend"
       />
 
-      <!-- ICP 备案页脚：仅未登录（欢迎页）展示；登录后收进左侧栏「设置 → 关于我们」 -->
-      <footer v-if="!authStore.isLoggedIn" class="icp-footer">
+      <!-- 审核访问时也直接展示备案信息。 -->
+      <footer v-if="!authStore.isLoggedIn || authStore.isReviewSession" class="icp-footer">
         <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">
           粤ICP备2026143546号
         </a>
