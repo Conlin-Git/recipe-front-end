@@ -17,6 +17,9 @@ interface ChatState {
   lastStreamEventId: string
   /** 当前会话是否还有更早的历史可下拉加载 */
   hasMoreHistory: boolean
+  routeDomain: string
+  routeRag: boolean
+  routeConfidence: number
 }
 
 export const useChatStore = defineStore('chat', {
@@ -30,6 +33,9 @@ export const useChatStore = defineStore('chat', {
     generatingIds: [],
     lastStreamEventId: '0',
     hasMoreHistory: false,
+    routeDomain: '',
+    routeRag: false,
+    routeConfidence: 0,
   }),
   actions: {
     setConversations(list: Conversation[]) {
@@ -51,6 +57,11 @@ export const useChatStore = defineStore('chat', {
     setHasMoreHistory(value: boolean) {
       this.hasMoreHistory = value
     },
+    setRouteMeta(domain: string, rag: boolean, confidence: number) {
+      this.routeDomain = domain
+      this.routeRag = rag
+      this.routeConfidence = confidence
+    },
     addMessage(msg: Message) {
       this.messages.push(msg)
     },
@@ -63,6 +74,20 @@ export const useChatStore = defineStore('chat', {
       if (!last) return
       last.content += token
       if (html !== undefined) last.html = html
+    },
+    appendToTurnMessage(turnId: string | undefined, token: string, html?: string) {
+      const index = turnId
+        ? this.messages.findIndex(
+          (message) => message.turn_id === turnId && message.role === 'assistant',
+        )
+        : -1
+      // 带 turn_id 的迟到事件不能回退到当前会话最后一条消息，否则切换会话后
+      // 旧流会把 token 串到新会话。只有旧协议未带 turn_id 时才允许兼容回退。
+      if (turnId && index < 0) return
+      const message = index >= 0 ? this.messages[index] : this.messages[this.messages.length - 1]
+      if (!message || message.role !== 'assistant') return
+      message.content += token
+      if (html !== undefined) message.html = html
     },
     setPending(value: boolean) {
       this.pending = value
@@ -94,6 +119,9 @@ export const useChatStore = defineStore('chat', {
       this.detachedGenerating = false
       this.lastStreamEventId = '0'
       this.hasMoreHistory = false
+      this.routeDomain = ''
+      this.routeRag = false
+      this.routeConfidence = 0
     },
     removeConversation(id: number) {
       this.conversations = this.conversations.filter((c) => c.id !== id)

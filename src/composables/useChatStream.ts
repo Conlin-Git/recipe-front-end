@@ -133,29 +133,39 @@ export function useChatStream() {
         fromId,
         {
           onId: (id) => chatStore.setLastStreamEventId(id),
-          onMeta: (_cid, _rag, question) => {
+          onMeta: (_cid, rag, question, turnId, domain, confidence) => {
+            if (_cid !== chatStore.currentConversationId) return
+            chatStore.setRouteMeta(domain ?? '', rag, confidence ?? 0)
+            const last = chatStore.messages[chatStore.messages.length - 1]
+            if (last?.role === 'assistant' && !last.turn_id && turnId) {
+              last.turn_id = turnId
+            }
             if (rebuildUserBubble && question) {
-              chatStore.insertMessageBeforeLast({ role: 'user', content: question })
+              chatStore.insertMessageBeforeLast({ role: 'user', content: question, turn_id: turnId })
               rebuildUserBubble = false
             }
           },
-          onToken: (token, html) => {
+          onToken: (token, html, turnId) => {
             receivedAny = true
-            chatStore.appendToLastMessage(token, html)
+            chatStore.appendToTurnMessage(turnId, token, html)
           },
-          onError: (message) => {
+          onError: (message, turnId) => {
             receivedAny = true
-            chatStore.appendToLastMessage(`⚠️ ${message}`)
+            chatStore.appendToTurnMessage(turnId, `⚠️ ${message}`)
           },
         },
         controller.signal,
       )
       // 正常到 [DONE]：本轮生成结束
       chatStore.removeGeneratingId(cid)
-      if (!receivedAny && chatStore.currentConversationId === cid) {
-        // 缓冲已过期等场景：拉历史兜底，保证最终回答能显示
-        const page = await getHistory(cid)
-        chatStore.setMessages(page.messages, page.has_more)
+      if (chatStore.currentConversationId === cid) {
+        // 生成事件可能在连接收尾前已落库；如果占位气泡仍为空，
+        // 统一从历史对齐，避免 SSE 解析/热更新丢帧导致“后端有回答、前端空白”。
+        const last = chatStore.messages[chatStore.messages.length - 1]
+        if (!receivedAny || (last?.role === 'assistant' && !last.content.trim())) {
+          const page = await getHistory(cid)
+          chatStore.setMessages(page.messages, page.has_more)
+        }
       }
       // 回答落库晚于进入会话时的已读标记：正在观看的当前会话补一次已读
       if (chatStore.currentConversationId === cid) {
@@ -201,10 +211,11 @@ export function useChatStream() {
       return
 
     const isNewConversation = chatStore.currentConversationId === null
+    const clientTurnId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
 
     // 用户消息入列 + 系统消息占位，随即进入 typing（pending）态：禁止再次输入
-    chatStore.addMessage({ role: 'user', content })
-    chatStore.addMessage({ role: 'assistant', content: '' })
+    chatStore.addMessage({ role: 'user', content, turn_id: clientTurnId })
+    chatStore.addMessage({ role: 'assistant', content: '', turn_id: clientTurnId })
     chatStore.setLastStreamEventId('0')
     chatStore.setPending(true)
 
@@ -213,6 +224,7 @@ export function useChatStream() {
       ;({ conversation_id: cid } = await startChat(
         content,
         chatStore.currentConversationId,
+        clientTurnId,
       ))
     } catch (e) {
       chatStore.appendToLastMessage(

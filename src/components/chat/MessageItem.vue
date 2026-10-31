@@ -8,6 +8,11 @@ const props = defineProps<{
   avatarUrl?: string | null
   /** SSE 流式输出中：内容尾部显示闪烁光标 */
   streaming?: boolean
+  canRetry?: boolean
+}>()
+
+const emit = defineEmits<{
+  retry: []
 }>()
 
 const bubbleRef = ref<HTMLElement>()
@@ -58,6 +63,14 @@ function onBubbleClick(event: MouseEvent) {
       <span v-else-if="message.content" class="message-text">{{ message.content }}</span>
       <span v-else class="typing"><i></i><i></i><i></i></span>
       <span v-if="streaming && (message.html || message.content)" class="cursor"></span>
+      <button
+        v-if="message.role === 'assistant' && canRetry && message.content"
+        class="retry-btn"
+        type="button"
+        @click="emit('retry')"
+      >
+        重新回答
+      </button>
     </div>
   </div>
 </template>
@@ -117,6 +130,23 @@ function onBubbleClick(event: MouseEvent) {
   background: var(--code-bg, #f4f3ec);
   color: var(--text-h, #08060d);
   border-top-left-radius: 0.25rem;
+}
+
+.retry-btn {
+  display: block;
+  margin-top: 0.625rem;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--border, #e5e4e7);
+  border-radius: 0.35rem;
+  color: var(--text, #6b6375);
+  background: transparent;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.retry-btn:hover {
+  color: var(--accent, #aa3bff);
+  border-color: var(--accent, #aa3bff);
 }
 
 /* 富文本内容排版（v-html 内部元素需用 :deep 穿透 scoped） */

@@ -6,6 +6,8 @@ export interface Message {
   content: string
   /** 后端渲染好的完整 HTML（assistant 消息直接 v-html 展示） */
   html?: string
+  /** 生成轮次标识，流式 token 按它定位消息，避免切换会话后串写 */
+  turn_id?: string
 }
 
 /** 历史消息分页：首屏最近一页，更早的下拉加载 */
@@ -30,11 +32,18 @@ export interface StreamCallbacks {
   /** 每个事件的流 entry id：断线重连的断点 */
   onId?: (id: string) => void
   /** meta 事件：会话ID + 是否命中RAG + 原始问题（刷新恢复时重建用户气泡用） */
-  onMeta?: (conversationId: number, rag: boolean, question?: string) => void
+  onMeta?: (
+    conversationId: number,
+    rag: boolean,
+    question?: string,
+    turnId?: string,
+    domain?: string,
+    confidence?: number,
+  ) => void
   /** token: 原始 Markdown 增量；html: 后端渲染的完整 HTML 快照 */
-  onToken: (token: string, html?: string) => void
+  onToken: (token: string, html?: string, turnId?: string) => void
   /** 服务端发来的业务错误事件（流随后正常结束） */
-  onError: (message: string) => void
+  onError: (message: string, turnId?: string) => void
   /** 生成正常完成 */
-  onDone?: () => void
+  onDone?: (turnId?: string) => void
 }

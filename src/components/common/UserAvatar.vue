@@ -2,7 +2,7 @@
 /**
  * 统一头像组件：有 avatar_url 显示图片，否则显示默认 emoji。
  */
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const props = withDefaults(
   defineProps<{
@@ -14,6 +14,15 @@ const props = withDefaults(
 )
 
 const showImage = computed(() => props.role === 'user' && !!props.avatarUrl)
+const imageFailed = ref(false)
+
+watch(() => props.avatarUrl, () => {
+  imageFailed.value = false
+})
+
+function handleImageError() {
+  imageFailed.value = true
+}
 
 // size 按 px 数值传入，内部换算成 rem（根字号 16px）
 const sizeRem = computed(() => `${props.size / 16}rem`)
@@ -21,7 +30,13 @@ const sizeRem = computed(() => `${props.size / 16}rem`)
 
 <template>
   <div class="avatar" :class="role" :style="{ width: sizeRem, height: sizeRem }">
-    <img v-if="showImage" :src="avatarUrl!" alt="用户头像" class="avatar-img" />
+    <img
+      v-if="showImage && !imageFailed"
+      :src="avatarUrl!"
+      alt="用户头像"
+      class="avatar-img"
+      @error="handleImageError"
+    />
     <span v-else>{{ role === 'assistant' ? '🤖' : '👤' }}</span>
   </div>
 </template>

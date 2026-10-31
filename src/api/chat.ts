@@ -34,10 +34,18 @@ export function stopChat(conversationId: number) {
  * 点火：起后台生成任务，立即返回会话ID。
  * token 事件由服务端缓存进 Redis Stream，凭返回的 ID 调 subscribeStream 订阅。
  */
-export function startChat(message: string, conversationId: number | null) {
-  return request<{ conversation_id: number }>('/chat', {
+export function startChat(
+  message: string,
+  conversationId: number | null,
+  clientTurnId?: string,
+) {
+  return request<{ conversation_id: number; turn_id: string }>('/chat', {
     method: 'POST',
-    body: JSON.stringify({ message, conversation_id: conversationId }),
+    body: JSON.stringify({
+      message,
+      conversation_id: conversationId,
+      client_turn_id: clientTurnId,
+    }),
   })
 }
 
@@ -101,14 +109,21 @@ export async function subscribeStream(
         const parsed = JSON.parse(data)
         if (parsed.id) callbacks.onId?.(parsed.id)
         if (parsed.type === 'meta') {
-          callbacks.onMeta?.(parsed.conversation_id, !!parsed.rag, parsed.question)
+          callbacks.onMeta?.(
+            parsed.conversation_id,
+            !!parsed.rag,
+            parsed.question,
+            parsed.turn_id,
+            parsed.domain,
+            parsed.confidence,
+          )
         } else if (parsed.type === 'delta') {
-          callbacks.onToken(parsed.delta, parsed.html)
+          callbacks.onToken(parsed.delta, parsed.html, parsed.turn_id)
         } else if (parsed.type === 'error') {
-          callbacks.onError(parsed.message)
+          callbacks.onError(parsed.message, parsed.turn_id)
         } else if (parsed.type === 'done' || parsed.type === 'stopped') {
           // stopped = 手动停止的终态（部分回答已落库），按完成处理
-          callbacks.onDone?.()
+          callbacks.onDone?.(parsed.turn_id)
         }
       } catch {
         // 忽略不完整的 JSON 片段

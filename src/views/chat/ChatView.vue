@@ -48,6 +48,11 @@ function handleSend(text: string) {
   send(text)
 }
 
+function handleRetry(text: string) {
+  if (!text || pending.value || streaming.value || detachedGenerating.value) return
+  send(text)
+}
+
 async function handleAuthSuccess() {
   startPolling() // 后台生成轮询：生成中动画/完成后未读红点
   await loadLatestConversation()
@@ -122,7 +127,6 @@ onMounted(async () => {
             @click="activeDialog = 'profile'"
           >
             <UserAvatar role="user" :avatar-url="authStore.user?.avatar_url" :size="32" />
-            <span class="nickname">{{ authStore.user?.nickname ?? authStore.user?.username }}</span>
           </button>
         </div>
       </header>
@@ -135,6 +139,7 @@ onMounted(async () => {
         @login="activeDialog = 'auth'"
         @stop="stop"
         @resume="resume"
+        @retry="handleRetry"
       />
 
       <!-- 底部：输入框 + 发送按钮（typing/生成中禁用；未登录不展示） -->
@@ -249,9 +254,10 @@ onMounted(async () => {
 .chat-header-user {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  max-width: 40%;
-  padding: 0.25rem 0.5rem;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
   border: none;
   border-radius: 0.5rem;
   background: transparent;
@@ -265,14 +271,6 @@ onMounted(async () => {
 .chat-header-user:hover {
   color: var(--accent, #aa3bff);
   background: var(--code-bg, #f4f3ec);
-}
-
-/* 昵称超长省略号 */
-.nickname {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ICP 备案页脚：极窄一条，小字半透明，不抢视觉 */
