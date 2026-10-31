@@ -17,6 +17,7 @@ const emit = defineEmits<{
   create: []
   remove: [id: number]
   settings: []
+  naming: []
 }>()
 
 // 默认收起（刷新页面保持收起态）
@@ -48,6 +49,7 @@ defineExpose({
   <aside class="drawer" :class="{ open: !collapsed }">
     <div class="drawer-header">
       <button class="new-chat-btn" @click="handleCreate">＋ 新对话</button>
+      <button class="naming-btn" title="命理命名分析" @click="emit('naming')">✦</button>
       <button class="icon-btn" title="收起会话列表" @click="collapsed = true">«</button>
     </div>
 
@@ -141,6 +143,17 @@ defineExpose({
   cursor: pointer;
   white-space: nowrap;
   transition: border-color 0.2s, color 0.2s;
+}
+
+.naming-btn {
+  flex-shrink: 0;
+  width: 1.9rem;
+  height: 1.9rem;
+  border: 1px solid var(--border, #e5e4e7);
+  border-radius: .45rem;
+  background: transparent;
+  color: var(--accent, #aa3bff);
+  cursor: pointer;
 }
 
 .new-chat-btn:hover {

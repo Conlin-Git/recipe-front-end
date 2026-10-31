@@ -12,6 +12,7 @@ import UserAvatar from '../../components/common/UserAvatar.vue'
 import AuthDialog from '../../components/auth/AuthDialog.vue'
 import ProfileDialog from '../../components/profile/ProfileDialog.vue'
 import SettingsDialog from '../../components/settings/SettingsDialog.vue'
+import NamingDialog from '../../components/naming/NamingDialog.vue'
 import { useChatStore } from '../../stores/chat'
 import { useAuthStore } from '../../stores/auth'
 import { getMe } from '../../api/user'
@@ -34,7 +35,7 @@ const {
   loadOlderMessages,
 } = useChatStream()
 
-const activeDialog = ref<'auth' | 'profile' | 'settings' | null>(null)
+const activeDialog = ref<'auth' | 'profile' | 'settings' | 'naming' | null>(null)
 
 /** 会话列表抽屉引用，头部按钮触发展开 */
 const conversationListRef = ref<InstanceType<typeof ConversationList> | null>(null)
@@ -101,6 +102,7 @@ onMounted(async () => {
       @create="startNewConversation"
       @remove="removeConversation"
       @settings="activeDialog = 'settings'"
+      @naming="activeDialog = 'naming'"
     />
 
     <div class="chat-container">
@@ -171,6 +173,10 @@ onMounted(async () => {
       :open="activeDialog === 'settings'"
       @close="activeDialog = null"
       @logout="handleLogout"
+    />
+    <NamingDialog
+      :open="activeDialog === 'naming'"
+      @close="activeDialog = null"
     />
   </div>
 </template>
