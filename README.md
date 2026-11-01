@@ -73,6 +73,7 @@ src/
 前置：后端已启动在 `http://localhost:8000`（见后端 README）。
 
 ```bash
+nvm use
 npm install
 npm run dev        # 开发服务器（默认 :5173，/api 代理到 :8000）
 ```

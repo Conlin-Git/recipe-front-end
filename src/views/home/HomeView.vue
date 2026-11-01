@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const emit = defineEmits<{ navigate: [page: 'assistant' | 'gaokao'] }>()
+const emit = defineEmits<{ navigate: [page: 'assistant' | 'gaokao-guide'] }>()
 </script>
 
 <template>
@@ -20,7 +20,7 @@ const emit = defineEmits<{ navigate: [page: 'assistant' | 'gaokao'] }>()
         <span class="mode-arrow" aria-hidden="true">→</span>
       </button>
 
-      <button class="mode-card mode-card-guide" type="button" @click="emit('navigate', 'gaokao')">
+      <button class="mode-card mode-card-guide" type="button" @click="emit('navigate', 'gaokao-guide')">
         <span class="mode-icon" aria-hidden="true">▤</span>
         <span class="mode-card-body">
           <strong>高考指南</strong>

@@ -2,11 +2,12 @@
 import { computed, markRaw, ref } from 'vue'
 import HomeView from '../home/HomeView.vue'
 import AssistantView from './AssistantView.vue'
-import GaokaoPage from '../gaokao/GaokaoPage.vue'
+import GaokaoGuidePage from '../gaokao/GaokaoGuidePage.vue'
+import GaokaoCatalogPage from '../gaokao/GaokaoCatalogPage.vue'
 import AuthDialog from '../../components/auth/AuthDialog.vue'
 import { useAuthStore } from '../../stores/auth'
 
-type PageName = 'home' | 'assistant' | 'gaokao'
+type PageName = 'home' | 'assistant' | 'gaokao-guide' | 'gaokao-catalog'
 
 const activePage = ref<PageName>('home')
 const authStore = useAuthStore()
@@ -15,7 +16,9 @@ const pendingPage = ref<PageName | null>(null)
 const pageComponents = {
   home: markRaw(HomeView),
   assistant: markRaw(AssistantView),
-  gaokao: markRaw(GaokaoPage),
+  // 高考指南从主界面直接进入，避免再增加一个只负责分流的中间页。
+  'gaokao-guide': markRaw(GaokaoGuidePage),
+  'gaokao-catalog': markRaw(GaokaoCatalogPage),
 }
 
 const activeComponent = computed(() => pageComponents[activePage.value])
@@ -44,7 +47,7 @@ function closeAuth() {
 
 <template>
   <KeepAlive :max="3">
-    <component :is="activeComponent" @navigate="navigate" />
+    <component :is="activeComponent" @navigate="navigate" @login="authOpen = true" />
   </KeepAlive>
   <AuthDialog :open="authOpen" @close="closeAuth" @success="handleAuthSuccess" />
 </template>

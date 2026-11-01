@@ -111,8 +111,8 @@ onMounted(async () => {
       <!-- 头部：左（展开会话列表）/ 中（标题）/ 右（用户入口） -->
       <header class="chat-header">
         <div class="chat-header-left">
-          <button class="home-link" title="返回主页面" @click="emit('navigate', 'home')">
-            <span aria-hidden="true">‹</span> 主页面
+          <button class="home-link" title="返回主页面" aria-label="返回主页面" @click="emit('navigate', 'home')">
+            <span aria-hidden="true">←</span>
           </button>
           <button
             v-if="authStore.isLoggedIn"
@@ -240,16 +240,18 @@ onMounted(async () => {
 }
 
 .home-link {
+  width: 1.9rem;
+  height: 1.9rem;
   display: inline-flex;
   align-items: center;
-  gap: .2rem;
-  padding: .3rem .45rem;
+  justify-content: center;
+  padding: 0;
   border: 0;
   border-radius: .4rem;
   background: transparent;
   color: var(--text, #6b6375);
   font: inherit;
-  font-size: .8rem;
+  font-size: 1.15rem;
   cursor: pointer;
 }
 
