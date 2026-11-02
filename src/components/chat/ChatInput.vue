@@ -116,4 +116,10 @@ function onKeydown(e: KeyboardEvent) {
   opacity: 0.6;
   cursor: not-allowed;
 }
+
+@media (max-width: 680px) {
+  .chat-input-area { gap: .45rem; padding: .65rem .75rem; }
+  .chat-input { min-width: 0; height: 1.45rem; padding: .55rem .65rem; font-size: 1rem; }
+  .chat-send-btn { padding: .58rem .85rem; font-size: .85rem; }
+}
 </style>

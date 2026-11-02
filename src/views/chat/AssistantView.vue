@@ -347,4 +347,12 @@ onMounted(async () => {
   opacity: 0.8;
 }
 
+@media (max-width: 680px) {
+  .chat-header { padding: .6rem .75rem; }
+  .chat-header-title { font-size: 1rem; }
+  .chat-header-center { gap: .4rem; }
+  .chat-header-user { width: 2rem; height: 2rem; }
+  .assistant-disclaimer { padding: .35rem .75rem .2rem; font-size: .66rem; }
+}
+
 </style>

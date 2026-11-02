@@ -28,6 +28,7 @@ export interface GaokaoRecommendation {
   group_name: string
   major_name: string
   subject_requirements?: string
+  tie_breaker?: string
   min_score?: number
   min_rank?: number
   avg_score?: number
@@ -39,10 +40,11 @@ export interface GaokaoRecommendation {
   historical_min_ranks: number[]
   rank_gap?: number
   comparison_rank?: number
+  comparison_mode?: 'rank' | 'score_only'
   plan_count?: number
   confidence: '高' | '中' | '低'
-  data_quality?: '官方位次' | '换算位次' | '仅最低分' | '无可用数据'
-  evidence: Array<{ year: number; min_rank?: number; min_score?: number; source_id: number; data_quality?: string }>
+  data_quality?: '官方位次' | '截图位次' | '截图位次未细分' | '换算位次' | '仅最低分' | '无可用数据'
+  evidence: Array<{ year: number; min_rank?: number; min_score?: number; source_id: number; source_type?: string; source_locator?: string; reported_rank?: number; note?: string; data_quality?: string }>
   reason: string
 }
 
@@ -52,7 +54,7 @@ export interface GaokaoGuideResult {
   profile: Record<string, unknown>
   recommendations: GaokaoRecommendation[]
   sections?: Record<string, GaokaoRecommendation[]>
-  sources: Array<{ id: number; publisher: string; year: number; dataset_type: string; url: string; validation_status: string }>
+  sources: Array<{ id: number; publisher: string; year: number; dataset_type: string; url: string | null; validation_status: string }>
   warnings: string[]
   summary: {
     matched_count: number
@@ -64,6 +66,18 @@ export interface GaokaoGuideResult {
   coverage: GaokaoCoverage
   school_recommendations: GaokaoSchoolRecommendation[]
   rule_note: string
+  agent_plan?: {
+    agent_name: string
+    agent_version: string
+    status: 'ready' | 'insufficient'
+    mode: string
+    llm_used: boolean
+    evidence_locked: boolean
+    steps: Array<{ name: string; status: string; detail: string; [key: string]: unknown }>
+    selection_policy: string
+    selected_tiers: Record<'冲' | '稳' | '保', number>
+    warnings: string[]
+  }
 }
 
 export interface GaokaoSchoolRecommendation {
@@ -75,8 +89,9 @@ export interface GaokaoSchoolRecommendation {
   min_rank?: number
   rank_gap?: number
   comparison_rank?: number
+  comparison_mode?: 'rank' | 'score_only'
   major_count: number
-  data_quality?: '官方位次' | '换算位次' | '仅最低分' | '无可用数据'
+  data_quality?: '官方位次' | '截图位次' | '截图位次未细分' | '换算位次' | '仅最低分' | '无可用数据'
   historical_years: number[]
   confidence: '高' | '中' | '低'
   reason: string

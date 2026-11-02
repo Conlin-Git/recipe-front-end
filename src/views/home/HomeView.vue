@@ -24,7 +24,7 @@ const emit = defineEmits<{ navigate: [page: 'assistant' | 'gaokao-guide'] }>()
         <span class="mode-icon" aria-hidden="true">▤</span>
         <span class="mode-card-body">
           <strong>高考指南</strong>
-          <span>按省份、科类、位次和官方数据查询当前年度志愿信息。</span>
+          <span>按省份、科类、位次查询当前年度志愿信息。</span>
         </span>
         <span class="mode-arrow" aria-hidden="true">→</span>
       </button>

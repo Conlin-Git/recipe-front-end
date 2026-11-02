@@ -11,14 +11,16 @@ import {
 } from '../../api/gaokao'
 
 const emit = defineEmits<{ login: []; catalog: [] }>()
-type TierFilter = '全部' | '冲' | '稳' | '保' | '数据不足'
+type TierFilter = '冲' | '稳' | '保'
 
 const loading = ref(false)
 const result = ref<GaokaoGuideResult | null>(null)
 const coverage = ref<GaokaoCoverage | null>(null)
-const tierFilter = ref<TierFilter>('全部')
+const tierFilter = ref<TierFilter>('稳')
+const resultPage = ref(1)
+const resultPageSize = 10
 const provinces = ref<string[]>(['四川'])
-const schoolProvinces = ref<string[]>(['四川', '广东', '上海'])
+const schoolProvinces = ref<string[]>([])
 const referenceYears = ref<number[]>([2026])
 const tracks = ref<string[]>([])
 const provinceTracks = ref<Record<string, string[]>>({})
@@ -27,7 +29,7 @@ const provinceReferenceBatches = ref<Record<string, Record<string, string[]>>>({
 const form = ref({
   candidate_province: '四川',
   admission_province: '四川',
-  school_provinces: ['四川', '广东', '上海'],
+  school_provinces: [] as string[],
   candidate_year: new Date().getFullYear() + 1,
   reference_year: 2026,
   track: '',
@@ -41,7 +43,7 @@ const form = ref({
 const availableTracks = computed(() => provinceTracks.value[form.value.candidate_province] || tracks.value)
 
 function undergraduateBatches(batches: string[]) {
-  const filtered = batches.filter((batch) => batch.includes('本科'))
+  const filtered = batches.filter((batch) => batch.includes('本科') || batch === '提前批')
   return filtered.length ? filtered : ['本科普通批']
 }
 
@@ -55,19 +57,28 @@ const availableBatches = computed(() => (
 
 const tierCounts = computed(() => result.value?.summary?.tier_counts || { 冲: 0, 稳: 0, 保: 0, 数据不足: 0 })
 const resultCoverage = computed(() => result.value?.coverage || coverage.value)
-const hasQualifiedResults = computed(() => (tierCounts.value['冲'] + tierCounts.value['稳'] + tierCounts.value['保']) > 0)
+const hasRows = computed(() => pagedSchoolItems.value.length > 0)
 const candidateProvince = computed(() => form.value.candidate_province || '当前省份')
 const schoolItems = computed(() => {
   const items = result.value?.school_recommendations || []
-  const filtered = tierFilter.value === '全部' ? items : items.filter((item) => item.tier === tierFilter.value)
-  return tierFilter.value === '全部' && hasQualifiedResults.value ? filtered.filter((item) => item.tier !== '数据不足') : filtered
+  return items.filter((item) => item.tier === tierFilter.value)
+})
+const resultPageCount = computed(() => Math.max(1, Math.ceil(schoolItems.value.length / resultPageSize)))
+const pagedSchoolItems = computed(() => {
+  const start = (resultPage.value - 1) * resultPageSize
+  return schoolItems.value.slice(start, start + resultPageSize)
+})
+
+watch(tierFilter, () => { resultPage.value = 1 })
+watch(resultPageCount, (count) => {
+  if (resultPage.value > count) resultPage.value = count
 })
 
 function syncProvinceOptions() {
   const nextTracks = provinceTracks.value[form.value.candidate_province] || tracks.value
   if (!nextTracks.includes(form.value.track)) form.value.track = nextTracks[0] || ''
   const nextBatches = availableBatches.value
-  if (!nextBatches.includes(form.value.batch)) form.value.batch = nextBatches[0] || '本科普通批'
+  if (!nextBatches.includes(form.value.batch)) form.value.batch = nextBatches.find(b => b === '本科批次B段') || nextBatches.find(b => !b.includes('提前')) || nextBatches[0] || '本科普通批'
 }
 
 watch(() => form.value.candidate_province, syncProvinceOptions)
@@ -76,10 +87,9 @@ watch(() => form.value.reference_year, syncProvinceOptions)
 onMounted(async () => {
   try {
     const options = await getGaokaoOptions()
-    // 目前四川是已完整配置考生位次口径的入口；院校所在地范围由服务端公开返回。
+    // 生源地和全国院校所在地分别取自服务端，不共用一个列表。
     provinces.value = options.provinces?.length ? options.provinces : ['四川']
     schoolProvinces.value = options.school_provinces?.length ? options.school_provinces : schoolProvinces.value
-    form.value.school_provinces = [...schoolProvinces.value]
     referenceYears.value = options.reference_years?.length ? options.reference_years : options.years
     tracks.value = options.tracks
     provinceTracks.value = options.province_tracks || {}
@@ -95,7 +105,7 @@ onMounted(async () => {
   } catch (err) {
     const message = err instanceof Error ? err.message : ''
     if (message.includes('未登录') || message.includes('登录')) emit('login')
-    else ElMessage.error('官方数据选项加载失败，请稍后重试。')
+    else ElMessage.error('查询选项加载失败，请稍后重试。')
   }
 })
 
@@ -107,9 +117,10 @@ watch(() => form.value.candidate_province, (province) => {
 async function submit() {
   if (loading.value) return
   result.value = null
-  tierFilter.value = '全部'
-  if (!form.value.candidate_province || !form.value.school_provinces.length || !form.value.track) {
-    ElMessage.warning('请先选择考生省份、院校所在地和科类。')
+  tierFilter.value = '稳'
+  resultPage.value = 1
+  if (!form.value.candidate_province || !form.value.track) {
+    ElMessage.warning('请先选择考生省份和科类。')
     return
   }
   if (!form.value.rank && form.value.score === undefined) {
@@ -171,15 +182,24 @@ function formatYears(years: number[]) {
 function schoolRowKey(item: GaokaoSchoolRecommendation) {
   return `${item.university_name}-${item.school_province || 'unknown'}`
 }
+
+function selectTier(tier: TierFilter) {
+  tierFilter.value = tier
+  resultPage.value = 1
+}
+
+function updateResultPage(page: number) {
+  resultPage.value = Math.min(Math.max(page, 1), resultPageCount.value)
+}
 </script>
 
 <template>
   <main class="gaokao-guide">
     <section class="guide-intro">
       <div>
-        <el-tag type="primary" effect="light">官方数据查询</el-tag>
+        <el-tag type="primary" effect="light">投档数据查询</el-tag>
         <h2>生成志愿指南</h2>
-        <p>填写考生本地省份和省内位次，按该省招生口径生成学校清单；专业详情可展开查看。</p>
+        <p>支持四川、广东、上海考生。院校可选全国；只比较在考生生源地有投档记录的学校。</p>
       </div>
     </section>
 
@@ -224,9 +244,9 @@ function schoolRowKey(item: GaokaoSchoolRecommendation) {
         <div class="form-section form-section-wide">
           <div class="form-section-title"><span>2</span>选择比较范围</div>
           <div class="form-grid">
-            <el-form-item required>
+            <el-form-item>
               <template #label>院校所在地</template>
-              <el-select v-model="form.school_provinces" multiple collapse-tags placeholder="请选择院校所在地">
+              <el-select v-model="form.school_provinces" multiple collapse-tags filterable clearable placeholder="全国院校（不限地区）">
                 <el-option v-for="item in schoolProvinces" :key="item" :label="item" :value="item" />
               </el-select>
             </el-form-item>
@@ -281,30 +301,27 @@ function schoolRowKey(item: GaokaoSchoolRecommendation) {
       </div>
       <div class="summary-grid">
         <div class="summary-item summary-total"><strong>{{ result.summary?.matched_count ?? result.recommendations.length }}</strong><span>匹配记录</span></div>
-        <button class="summary-item summary-risk" type="button" @click="tierFilter = '冲'"><strong>{{ tierCounts['冲'] }}</strong><span>冲</span></button>
-        <button class="summary-item summary-stable" type="button" @click="tierFilter = '稳'"><strong>{{ tierCounts['稳'] }}</strong><span>稳</span></button>
-        <button class="summary-item summary-safe" type="button" @click="tierFilter = '保'"><strong>{{ tierCounts['保'] }}</strong><span>保</span></button>
-        <button class="summary-item summary-insufficient" type="button" @click="tierFilter = '数据不足'"><strong>{{ tierCounts['数据不足'] }}</strong><span>数据不足</span></button>
+        <button class="summary-item summary-risk" type="button" @click="selectTier('冲')"><strong>{{ tierCounts['冲'] }}</strong><span>冲</span></button>
+        <button class="summary-item summary-stable" type="button" @click="selectTier('稳')"><strong>{{ tierCounts['稳'] }}</strong><span>稳</span></button>
+        <button class="summary-item summary-safe" type="button" @click="selectTier('保')"><strong>{{ tierCounts['保'] }}</strong><span>保</span></button>
       </div>
       <div class="result-toolbar">
         <el-radio-group v-model="tierFilter" size="small">
-          <el-radio-button label="全部">全部</el-radio-button>
           <el-radio-button label="冲">冲</el-radio-button>
           <el-radio-button label="稳">稳</el-radio-button>
           <el-radio-button label="保">保</el-radio-button>
-          <el-radio-button label="数据不足">数据不足</el-radio-button>
         </el-radio-group>
-        <span class="result-count">当前显示 {{ schoolItems.length }} 所学校</span>
+        <span class="result-count">当前显示 {{ schoolItems.length }} 所{{ tierFilter }}档学校，每页 {{ resultPageSize }} 条</span>
       </div>
-
-      <el-empty v-if="!hasQualifiedResults || !schoolItems.length" :description="`暂无可按${candidateProvince}省排位比较的学校结果；数据不足记录已收起`" />
+      <el-empty v-if="!hasRows" :description="`暂无满足${candidateProvince}省口径的本科投档数据`" />
       <div v-else class="result-table-wrap">
-        <el-table :data="schoolItems" :row-key="schoolRowKey" border stripe height="620">
+        <el-table class="result-table-desktop" :data="pagedSchoolItems" :row-key="schoolRowKey" border stripe height="620">
           <el-table-column type="expand" width="42">
             <template #default="scope">
               <div class="detail-panel">
                 <p>{{ scope.row.reason }}</p>
-                <p>学校维度最低分：{{ scope.row.min_score ?? '—' }}；最低位次：{{ scope.row.min_rank ?? '—' }}；数据质量：{{ scope.row.data_quality || '无可用数据' }}</p>
+                <p>学校维度最低分：{{ scope.row.min_score ?? '—' }}；最低位次：{{ scope.row.min_rank ?? '—' }}；数据质量：{{ scope.row.data_quality || '无可用数据' }}。</p>
+                <p v-if="scope.row.comparison_mode === 'score_only'">当前仅有可比较的最低分，未做跨年份或跨省位次推算。</p>
                 <p>点击下方专业行查看具体专业的录取/投档数据。</p>
                 <el-table :data="scope.row.majors" size="small" border>
                   <el-table-column prop="major_name" label="专业" min-width="180" />
@@ -312,6 +329,7 @@ function schoolRowKey(item: GaokaoSchoolRecommendation) {
                   <el-table-column label="最低分" width="95"><template #default="major">{{ major.row.min_score ?? '—' }}</template></el-table-column>
                   <el-table-column label="最低位次" width="105"><template #default="major">{{ major.row.min_rank ?? '—' }}</template></el-table-column>
                   <el-table-column label="数据层级" min-width="150"><template #default="major">{{ recordKindLabel(major.row) }}</template></el-table-column>
+                  <el-table-column label="同分排序" min-width="180"><template #default="major">{{ major.row.tie_breaker || '—' }}</template></el-table-column>
                 </el-table>
               </div>
             </template>
@@ -337,33 +355,67 @@ function schoolRowKey(item: GaokaoSchoolRecommendation) {
             <template #default="scope"><span>{{ formatYears(scope.row.historical_years) }}</span><small class="column-note">{{ scope.row.data_quality || '无可用数据' }}</small></template>
           </el-table-column>
         </el-table>
+        <div class="result-cards-mobile" aria-label="学校推荐列表">
+          <details v-for="school in pagedSchoolItems" :key="schoolRowKey(school)" class="school-mobile-card">
+            <summary>
+              <span class="school-mobile-summary-main">
+                <el-tag :type="tierType(school.tier)" effect="dark">{{ school.tier }}</el-tag>
+                <span><strong>{{ school.university_name }}</strong><small>{{ school.school_province || '未标注' }} · {{ school.major_count }} 个专业</small></span>
+              </span>
+              <span class="school-mobile-summary-metrics">
+                <span class="school-mobile-summary-score">{{ school.min_score ?? '—' }}<small>最低分</small></span>
+                <span class="school-mobile-summary-rank">{{ school.min_rank ?? '—' }}<small>最低位次</small></span>
+              </span>
+            </summary>
+            <div class="school-mobile-detail">
+              <p>{{ school.reason }}</p>
+              <p>最低位次：{{ school.min_rank ?? '—' }}；{{ school.data_quality || '无可用数据' }}</p>
+              <div v-for="major in school.majors" :key="`${schoolRowKey(school)}-${major.group_name}-${major.major_name}`" class="major-mobile-row">
+                <strong>{{ major.major_name || major.group_name || '未标注专业' }}</strong>
+                <span>最低分 {{ major.min_score ?? '—' }} · 最低位次 {{ major.min_rank ?? '—' }}</span>
+              </div>
+            </div>
+          </details>
+        </div>
       </div>
 
+      <el-pagination
+        v-if="schoolItems.length > resultPageSize"
+        class="guide-pagination"
+        :current-page="resultPage"
+        :page-size="resultPageSize"
+        :total="schoolItems.length"
+        :pager-count="5"
+        layout="prev, pager, next"
+        background
+        small
+        @current-change="updateResultPage"
+      />
+
       <el-collapse v-if="result.sources.length" class="source-collapse">
-        <el-collapse-item :title="`官方数据来源（${result.sources.length}）`" name="sources">
-          <a v-for="source in result.sources" :key="source.id" :href="source.url" target="_blank" rel="noopener noreferrer">
-            {{ source.publisher }} {{ source.year }} · {{ source.dataset_type }} · {{ source.validation_status }}
-          </a>
+        <el-collapse-item :title="`数据来源（${result.sources.length}）`" name="sources">
+          <div v-for="source in result.sources" :key="source.id">
+            <a v-if="source.url" :href="source.url" target="_blank" rel="noopener noreferrer">{{ source.publisher }} · {{ source.year }}</a>
+            <span v-else>{{ source.publisher }} · {{ source.year }}</span>
+          </div>
         </el-collapse-item>
       </el-collapse>
     </el-card>
 
     <footer class="guide-footer-notes">
-      <details>
-        <summary>数据范围、生成规则与免责说明</summary>
-        <p>填写规则：优先填写考生在本地省份的省内位次；没有位次时可填写分数。位次、科类和批次必须与考生本地口径一致。</p>
-        <p>当前院校所在地范围：{{ resultCoverage?.selected_school_provinces?.join('、') || '四川、广东、上海' }}；仅展示已核验官方招生数据，不代表全部本科院校。</p>
-        <p>{{ result?.rule_note || '生成规则：使用考生本地省内排位，比较学校在考生本地招生口径下的最低投档/录取门槛。' }}</p>
-        <p v-for="warning in result?.warnings || []" :key="warning">{{ warning }}</p>
-        <p>数据仅供志愿填报参考，不构成录取承诺；政策、计划、专业组和录取结果以当年省教育考试院及招生院校官方发布为准。</p>
-        <button class="footer-catalog-link" type="button" @click="emit('catalog')">查询已收录高校表</button>
-      </details>
+      <p>数据范围、生成规则与免责说明</p>
+      <p>填写规则：优先填写考生在本地省份的省内位次；没有位次时可填写分数。位次、科类和批次必须与考生本地口径一致。</p>
+      <p>当前院校所在地范围：{{ resultCoverage?.selected_school_provinces?.join('、') || '不限' }}；展示已收录的官方投档/录取记录，不代表全部本科院校。</p>
+      <p>{{ result?.rule_note || '生成规则：使用考生本地省内排位，比较学校在考生本地招生口径下的最低投档/录取门槛。' }}</p>
+      <p v-for="warning in result?.warnings || []" :key="warning">{{ warning }}</p>
+      <p>数据仅供志愿填报参考，不构成录取承诺；政策、计划、专业组和录取结果以当年省教育考试院及招生院校官方发布为准。</p>
+      <button class="footer-catalog-link" type="button" @click="emit('catalog')">查询已收录高校表</button>
     </footer>
   </main>
 </template>
 
 <style scoped>
-.gaokao-guide { flex: 1; min-height: 0; overflow: auto; padding: 1.25rem clamp(1rem, 5vw, 5rem) 1.5rem; color: var(--text-h, #08060d); background: var(--bg, #fff); }
+.gaokao-guide { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 1.25rem clamp(1rem, 5vw, 5rem) 1.5rem; color: var(--text-h, #08060d); background: var(--bg, #fff); }
 .guide-intro, .guide-card, .guide-result, .guide-footer-notes { width: min(70rem, 100%); margin-right: auto; margin-left: auto; }
 .guide-intro { margin-bottom: .8rem; }
 .guide-intro h2 { margin: .55rem 0 .3rem; font-size: 1.35rem; }
@@ -387,7 +439,7 @@ function schoolRowKey(item: GaokaoSchoolRecommendation) {
 .result-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
 .result-heading h3 { margin: 0; font-size: 1.05rem; }
 .result-heading p { margin: .2rem 0 0; color: var(--el-text-color-secondary); font-size: .78rem; }
-.summary-grid { display: grid; grid-template-columns: 1.4fr repeat(4, 1fr); gap: .55rem; margin-bottom: .75rem; }
+.summary-grid { display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: .55rem; margin-bottom: .75rem; }
 .summary-item { min-height: 4.1rem; display: flex; flex-direction: column; justify-content: center; gap: .1rem; padding: .6rem .75rem; border: 1px solid var(--el-border-color-lighter); border-radius: .6rem; color: var(--el-text-color-secondary); background: var(--el-fill-color-light); text-align: left; }
 button.summary-item { cursor: pointer; font: inherit; }
 .summary-item strong { color: var(--el-text-color-primary); font-size: 1.35rem; line-height: 1.1; }
@@ -395,12 +447,12 @@ button.summary-item { cursor: pointer; font: inherit; }
 .summary-risk strong { color: var(--el-color-warning); }
 .summary-stable strong { color: var(--el-color-primary); }
 .summary-safe strong { color: var(--el-color-success); }
-.summary-insufficient strong { color: var(--el-text-color-secondary); }
-.result-rule { margin: .7rem 0; padding: .45rem .65rem; border-left: 3px solid var(--el-color-primary); color: var(--el-text-color-secondary); background: var(--el-fill-color-light); font-size: .75rem; line-height: 1.45; }
 .result-toolbar { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin: .8rem 0 .55rem; }
 .result-count { color: var(--el-text-color-secondary); font-size: .78rem; }
-.result-table-wrap { overflow: hidden; border-radius: .45rem; }
+.result-table-wrap { width: 100%; max-width: 100%; overflow: hidden; border-radius: .45rem; }
 .result-table-wrap :deep(.el-table) { min-width: 980px; }
+.guide-pagination { display: flex; justify-content: center; max-width: 100%; margin: .85rem auto 0; overflow-x: auto; }
+.result-cards-mobile { display: none; }
 .school-cell { display: flex; flex-direction: column; gap: .12rem; min-width: 0; }
 .school-cell strong { color: var(--el-text-color-primary); font-size: .84rem; }
 .school-cell span { overflow: hidden; color: var(--el-text-color-secondary); font-size: .73rem; text-overflow: ellipsis; white-space: nowrap; }
@@ -411,9 +463,42 @@ button.summary-item { cursor: pointer; font: inherit; }
 .source-collapse { margin-top: .8rem; }
 .source-collapse a { display: block; margin-top: .35rem; color: var(--el-color-primary); font-size: .8rem; }
 .guide-footer-notes { margin-top: .85rem; padding: .45rem .1rem .1rem; color: var(--el-text-color-secondary); font-size: .7rem; line-height: 1.5; }
-.guide-footer-notes summary { cursor: pointer; color: var(--el-text-color-regular); }
+.guide-footer-notes > p:first-child { color: var(--el-text-color-regular); font-weight: 600; }
 .guide-footer-notes p { margin: .35rem 0 0; }
 .footer-catalog-link { margin-top: .35rem; padding: 0; border: 0; color: var(--el-color-primary); background: transparent; font: inherit; cursor: pointer; }
-@media (max-width: 980px) { .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .summary-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
-@media (max-width: 620px) { .form-grid { grid-template-columns: 1fr; } .form-actions { grid-column: auto; } .form-actions :deep(.el-form-item__content) { justify-content: stretch; } .form-actions .el-button { width: 100%; } .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .summary-total { grid-column: 1 / -1; } .result-toolbar { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 980px) { .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (max-width: 720px) {
+  .gaokao-guide { padding: .75rem .75rem 1rem; }
+  .guide-intro h2 { font-size: 1.18rem; }
+  .guide-intro p { font-size: .78rem; }
+  .guide-card, .guide-result { border-radius: .6rem; }
+  .form-section { padding: .7rem; }
+  .form-grid { grid-template-columns: 1fr; }
+  .form-actions { grid-column: auto; }
+  .form-actions :deep(.el-form-item__content) { justify-content: stretch; }
+  .form-actions .el-button { width: 100%; }
+  .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .summary-total { grid-column: 1 / -1; }
+  .result-toolbar { align-items: flex-start; flex-direction: column; }
+  .result-toolbar :deep(.el-radio-group) { display: flex; width: 100%; flex-wrap: wrap; }
+  .result-toolbar :deep(.el-radio-button) { flex: 1 0 auto; }
+  .result-table-wrap { overflow: visible; }
+  .result-table-desktop { display: none; }
+  .result-cards-mobile { display: grid; gap: .55rem; }
+  .school-mobile-card { overflow: hidden; border: 1px solid var(--el-border-color-lighter); border-radius: .65rem; background: var(--el-bg-color, var(--bg, #fff)); }
+  .school-mobile-card summary { display: flex; align-items: center; justify-content: space-between; gap: .55rem; padding: .7rem; cursor: pointer; list-style: none; }
+  .school-mobile-card summary::-webkit-details-marker { display: none; }
+  .school-mobile-summary-main { min-width: 0; display: flex; align-items: center; gap: .5rem; }
+  .school-mobile-summary-main > span { min-width: 0; display: flex; flex-direction: column; gap: .1rem; }
+  .school-mobile-summary-main strong { overflow: hidden; color: var(--el-text-color-primary); font-size: .86rem; text-overflow: ellipsis; white-space: nowrap; }
+  .school-mobile-summary-main small, .school-mobile-summary-score small, .school-mobile-summary-rank small { color: var(--el-text-color-secondary); font-size: .67rem; }
+  .school-mobile-summary-metrics { flex-shrink: 0; display: flex; align-items: flex-end; gap: .65rem; }
+  .school-mobile-summary-score, .school-mobile-summary-rank { display: flex; flex-direction: column; align-items: flex-end; color: var(--el-text-color-primary); font-size: .88rem; font-weight: 650; }
+  .school-mobile-detail { padding: .65rem .7rem .75rem; border-top: 1px solid var(--el-border-color-lighter); color: var(--el-text-color-regular); font-size: .74rem; line-height: 1.5; }
+  .school-mobile-detail p { margin: 0 0 .35rem; }
+  .major-mobile-row { display: flex; flex-direction: column; gap: .05rem; padding: .45rem 0; border-top: 1px dashed var(--el-border-color-lighter); }
+  .major-mobile-row strong { color: var(--el-text-color-primary); font-size: .77rem; }
+  .major-mobile-row span { color: var(--el-text-color-secondary); font-size: .7rem; }
+}
+@media (max-width: 620px) { .result-heading { align-items: flex-start; flex-direction: column; } .guide-pagination :deep(.el-pager) { max-width: 11rem; overflow: hidden; } }
 </style>
