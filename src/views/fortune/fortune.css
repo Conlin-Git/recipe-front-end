@@ -1,6 +1,6 @@
 /* Shared tokens also reach the Element Plus poppers teleported to body. */
 .fortune-page, .fortune-popper {
-  --fortune: #7653ad; --fortune-soft: #f1edf8; --fortune-border: #d7c9ed; --fortune-ink: #2d263b;
+  --fortune: #7653ad; --fortune-soft: #f1edf8; --fortune-border: #d7c9ed; --fortune-ink: #2d263b; --fortune-on-primary: #fff;
   --el-color-primary: var(--fortune); --el-color-primary-light-3: #9778c7; --el-color-primary-light-5: #bba7d9; --el-color-primary-light-7: #ded2ee; --el-color-primary-light-8: #e9e0f4; --el-color-primary-light-9: var(--fortune-soft); --el-color-primary-dark-2: #60418f;
   --el-text-color-primary: var(--text-h); --el-text-color-regular: var(--text-h); --el-text-color-secondary: var(--text); --el-text-color-placeholder: var(--text);
   --el-fill-color-blank: var(--surface); --el-fill-color-light: var(--code-bg); --el-fill-color: var(--canvas); --el-bg-color: var(--surface); --el-bg-color-overlay: var(--surface);
@@ -39,11 +39,12 @@
 .fortune-page .el-form-item__content { align-content: start; min-width: 0; }
 .fortune-page .form-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
 .fortune-page .form-row .el-form-item { min-width: 0; }
+.fortune-page .el-radio-button { --el-radio-button-checked-text-color: var(--fortune-on-primary); }
 .fortune-page .calendar-switch { position: relative; width: 100%; padding: 4px; border-radius: 11px; background: var(--canvas); box-sizing: border-box; }
 .fortune-page .calendar-indicator { position: absolute; left: 4px; top: 4px; bottom: 4px; width: calc(50% - 4px); border-radius: 8px; background: var(--surface); box-shadow: 0 2px 7px #2420360b; transition: transform 220ms var(--ease-spring); }
 .fortune-page .is-lunar .calendar-indicator { transform: translate3d(100%, 0, 0); }
 .fortune-page .calendar-switch .el-radio-group { position: relative; display: flex; width: 100%; }
-.fortune-page .calendar-switch .el-radio-button { flex: 1; }
+.fortune-page .calendar-switch .el-radio-button { flex: 1; --el-radio-button-checked-text-color: var(--fortune); }
 .fortune-page .calendar-switch .el-radio-button__inner { width: 100%; padding: 13px; border: 0 !important; outline: none; border-radius: 8px !important; background: transparent !important; color: var(--text); box-shadow: none !important; font-size: 13px; }
 .fortune-page .calendar-switch .el-radio-button__original-radio:focus-visible + .el-radio-button__inner { outline: 2px solid var(--fortune); outline-offset: -2px; }
 .fortune-page .calendar-switch .is-active .el-radio-button__inner { color: var(--fortune); }
@@ -150,7 +151,7 @@
 @media (max-width: 1080px) { .fortune-layout { grid-template-columns: 320px minmax(0, 1fr); gap: 20px; } .fortune-page .birth-card > .el-card__body { padding: 22px; } .fortune-page .chart-card > .el-card__body { padding: 16px; } .fortune-page .sihua-row { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 900px) { .fortune-layout { grid-template-columns: 1fr; max-width: 640px; } .fortune-intro { max-width: 640px; } .fortune-page .empty-chart > .el-card__body { min-height: 370px; } .fortune-page .constellation { width: 150px; height: 150px; margin: 16px 0; } .fortune-page .empty-note { padding-top: 24px; } .fortune-page .birth-card > .el-card__body { padding: 24px; } }
 @media (max-width: 560px) { .fortune-header { min-height: 56px; padding: 0 16px; } .fortune-header .back-button span:not(.app-icon) { font-size: 11px; } .fortune-header .header-name { font-size: 13px; } .fortune-body { padding: 24px 14px; } .fortune-intro { gap: 14px; margin-bottom: 22px; } .fortune-page .intro-symbol { width: 48px; height: 48px; border-radius: 14px; } .fortune-page h1 { font-size: 25px; } .fortune-page .intro-description { font-size: 11px; } .fortune-page .birth-card > .el-card__body { padding: 22px 18px; } .fortune-page .el-card { border-radius: 16px; } .fortune-page .summary-grid .el-statistic { padding: 0 14px; } .fortune-page .el-statistic__content { font-size: 23px; } .fortune-page .reading-card > .el-card__body { padding: 20px 18px; } .fortune-page .reading-top { flex-direction: column; align-items: flex-start; gap: 14px; margin-bottom: 20px; } .fortune-page .topic-picker { width: 100%; } .fortune-page .topic-picker .el-radio-button { flex: 1; } .fortune-page .topic-picker .el-radio-button__inner { width: 100%; } .fortune-page .palace-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; } .fortune-page .palace-card.el-button { grid-area: auto !important; padding: 14px; } .fortune-page .chart-center { display: none; } .fortune-page .major-stars { font-size: 12px; } .fortune-page .section-hint { font-size: 9px; } .fortune-page .fortune-disclaimer { text-align: left; } }
-@media (prefers-color-scheme: dark) { .fortune-page, .fortune-popper { --fortune: #bba0e8; --fortune-soft: #2c2639; --fortune-border: #514366; --fortune-ink: #e8def7; --el-color-primary-dark-2: #d0baf2; --el-color-primary-light-3: #a78bda; --el-color-primary-light-5: #81679f; --el-color-primary-light-7: #544363; --el-color-primary-light-8: #40324c; } .fortune-page .generate-button { color: #20182d; } }
+@media (prefers-color-scheme: dark) { .fortune-page, .fortune-popper { --fortune: #bba0e8; --fortune-soft: #2c2639; --fortune-border: #514366; --fortune-ink: #e8def7; --fortune-on-primary: #20182d; --el-color-primary-dark-2: #d0baf2; --el-color-primary-light-3: #a78bda; --el-color-primary-light-5: #81679f; --el-color-primary-light-7: #544363; --el-color-primary-light-8: #40324c; } .fortune-page .generate-button { color: #20182d; } }
 @media (prefers-reduced-motion: reduce) { .fortune-page *, .fortune-page *::before, .fortune-page *::after { animation: none !important; transition: none !important; } }
 
 .fortune-form-layout { max-width: 560px; margin: 0 auto; }

@@ -98,15 +98,15 @@ function handleError(err: unknown, fallback: string) {
 
     <p class="catalog-scope">选择考生生源地（四川、广东或上海），再按需筛选全国院校所在地。</p>
     <div class="catalog-filters">
-      <el-select v-model="form.admission_province" filterable placeholder="考生生源地">
+      <el-select popper-class="app-popper" :popper-options="{ strategy: 'fixed' }" v-model="form.admission_province" filterable placeholder="考生生源地">
         <el-option v-for="province in provinces" :key="province" :label="province" :value="province" />
       </el-select>
-      <el-select v-model="form.school_provinces" multiple collapse-tags filterable clearable placeholder="全国院校（不限地区）">
+      <el-select popper-class="app-popper" :popper-options="{ strategy: 'fixed' }" v-model="form.school_provinces" multiple collapse-tags filterable clearable placeholder="全国院校（不限地区）">
         <el-option v-for="province in schoolProvinces" :key="province" :label="province" :value="province" />
       </el-select>
-      <el-select v-model="form.year" clearable placeholder="年份"><el-option v-for="year in years" :key="year" :label="String(year)" :value="year" /></el-select>
-      <el-select v-model="form.track" clearable placeholder="科类"><el-option v-for="track in tracks" :key="track" :label="track" :value="track" /></el-select>
-      <el-select v-model="form.batch" placeholder="批次"><el-option label="普通本科批" value="本科普通批" /><el-option label="本科提前批" value="提前批" /></el-select>
+      <el-select popper-class="app-popper" :popper-options="{ strategy: 'fixed' }" v-model="form.year" clearable placeholder="年份"><el-option v-for="year in years" :key="year" :label="String(year)" :value="year" /></el-select>
+      <el-select popper-class="app-popper" :popper-options="{ strategy: 'fixed' }" v-model="form.track" clearable placeholder="科类"><el-option v-for="track in tracks" :key="track" :label="track" :value="track" /></el-select>
+      <el-select popper-class="app-popper" :popper-options="{ strategy: 'fixed' }" v-model="form.batch" placeholder="批次"><el-option label="普通本科批" value="本科普通批" /><el-option label="本科提前批" value="提前批" /></el-select>
       <el-input v-model="form.keywords" clearable placeholder="院校或专业关键词" @keyup.enter="search" />
       <el-button type="primary" :loading="loading" @click="search">查询</el-button>
     </div>
@@ -154,7 +154,7 @@ function handleError(err: unknown, fallback: string) {
 </template>
 
 <style scoped>
-.catalog-content { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 1rem clamp(1rem, 5vw, 5rem) 1.2rem; color: var(--text-h, #08060d); }
+.catalog-content { --el-text-color-primary: var(--text-h); --el-text-color-regular: var(--text-h); --el-text-color-secondary: var(--text); --el-text-color-placeholder: var(--text); --el-bg-color: var(--surface); --el-bg-color-overlay: var(--surface); --el-fill-color-blank: var(--surface); --el-fill-color-light: var(--code-bg); --el-fill-color-lighter: var(--code-bg); --el-border-color: var(--border); --el-border-color-light: var(--border); --el-border-color-lighter: var(--border); flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 1rem clamp(1rem, 5vw, 5rem) 1.2rem; color: var(--text-h, #08060d); }
 .catalog-scope, .catalog-intro, .catalog-filters, .catalog-table, .catalog-meta, .catalog-footer-notes, .catalog-error { width: min(70rem, 100%); margin-right: auto; margin-left: auto; }
 .catalog-intro { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .8rem; }
 .catalog-intro h2 { margin: .5rem 0 .25rem; font-size: 1.35rem; }
