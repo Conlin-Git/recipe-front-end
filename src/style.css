@@ -1,12 +1,19 @@
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
+  --text: #64748b;
+  --text-h: #1e293b;
   --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
+  --border: #e2e8f0;
+  --code-bg: #f8fafc;
+  --accent: #2563eb;
+  --accent-bg: rgba(37, 99, 235, 0.08);
+  --accent-border: rgba(37, 99, 235, 0.4);
+  --surface: #ffffff;
+  --canvas: #f6f8fc;
+  --surface-shadow: 0 4px 20px #21365a06, 0 1px 3px #21365a04;
+  --rank-reference: #aab7cb;
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --ease-spring: cubic-bezier(.22, 1.3, .36, 1);
+  --radius-card: 16px;
   --shadow:
     rgba(0, 0, 0, 0.1) 0 0.625rem 0.9375rem -0.1875rem, rgba(0, 0, 0, 0.05) 0 0.25rem 0.375rem -0.125rem;
 
@@ -30,9 +37,13 @@
     --bg: #16171d;
     --border: #2e303a;
     --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
+    --accent: #93b4ff;
+    --accent-bg: rgba(147, 180, 255, 0.12);
+    --accent-border: rgba(147, 180, 255, 0.4);
+    --surface: #1c202b;
+    --canvas: #131720;
+    --surface-shadow: 0 4px 20px #00000020;
+    --rank-reference: #62748e;
     --shadow:
       rgba(0, 0, 0, 0.4) 0 0.625rem 0.9375rem -0.1875rem, rgba(0, 0, 0, 0.25) 0 0.25rem 0.375rem -0.125rem;
   }
@@ -94,5 +105,33 @@ body {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+    animation-delay: 0ms !important;
+    scroll-behavior: auto !important;
   }
 }
+
+/* Shared, static color fields. Only transform / opacity may be interpolated. */
+.tier-冲 { --tier: #b45309; --tier-soft: #fff4e8; --tier-gradient: linear-gradient(110deg, #f4a340, #e77b35); }
+.tier-稳 { --tier: #245ac5; --tier-soft: #edf4ff; --tier-gradient: linear-gradient(110deg, #70a7ff, #3676e7); }
+.tier-保 { --tier: #167353; --tier-soft: #edf8f2; --tier-gradient: linear-gradient(110deg, #64bd9b, #29966e); }
+@media (prefers-color-scheme: dark) {
+  .tier-冲 { --tier: #ffc083; --tier-soft: #33281e; }
+  .tier-稳 { --tier: #a5c5ff; --tier-soft: #1d2b43; }
+  .tier-保 { --tier: #8eddb9; --tier-soft: #1b322b; }
+}
+
+.back-icon, .back-link, .feature-link {
+  transition: transform 220ms var(--ease-spring), opacity 160ms ease;
+}
+.back-icon:active, .back-link:active, .feature-link:active {
+  transform: translate3d(0, 0, 0) scale(.97);
+}
+
+/* Body-teleported Element poppers must never animate their positioning transform. */
+.app-popper { max-width: calc(100vw - 24px); transition: none !important; animation: none !important; --el-bg-color-overlay: var(--surface); --el-fill-color-blank: var(--surface); --el-text-color-primary: var(--text-h); --el-text-color-regular: var(--text-h); --el-text-color-placeholder: var(--text); --el-border-color-light: var(--border); --el-fill-color-light: var(--code-bg); }
+.app-popper .el-date-picker { width: min(322px, calc(100vw - 26px)); }
+.app-popper .el-date-picker .el-picker-panel__content { width: auto; margin: 12px; }
+
+/* Element cards otherwise interpolate theme backgrounds and shadows. */
+.el-card { transition-property: transform, opacity !important; }

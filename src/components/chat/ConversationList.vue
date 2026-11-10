@@ -8,6 +8,8 @@ import { storeToRefs } from 'pinia'
 import { useChatStore } from '../../stores/chat'
 import { useAuthStore } from '../../stores/auth'
 
+defineProps<{ navigationOnly?: boolean }>()
+
 const chatStore = useChatStore()
 const authStore = useAuthStore()
 const { conversations, currentConversationId, generatingIds } = storeToRefs(chatStore)
@@ -17,7 +19,8 @@ const emit = defineEmits<{
   create: []
   remove: [id: number]
   settings: []
-  naming: []
+  features: []
+  assistant: []
 }>()
 
 // 默认收起（刷新页面保持收起态）
@@ -48,12 +51,16 @@ defineExpose({
   <!-- 抽屉：浮层展开，滑入动画 -->
   <aside class="drawer" :class="{ open: !collapsed }">
     <div class="drawer-header">
-      <button class="new-chat-btn" @click="handleCreate">＋ 新对话</button>
-      <button class="naming-btn" title="命理命名分析" @click="emit('naming')">✦</button>
-      <button class="icon-btn" title="收起会话列表" @click="collapsed = true">«</button>
+      <button v-if="authStore.isLoggedIn && !navigationOnly" class="new-chat-btn" @click="handleCreate"><AppIcon name="plus" :size="16" /> 新对话</button>
+      <span v-else class="drawer-title">阿福</span>
+      <button class="icon-btn" title="收起会话列表" @click="collapsed = true"><AppIcon name="fold" :size="18" /></button>
     </div>
 
-    <ul class="drawer-body">
+    <div v-if="navigationOnly" class="drawer-body platform-navigation">
+      <button class="settings-btn" type="button" @click="collapsed = true; emit('assistant')"><AppIcon name="chat" :size="16" /> 与阿福对话</button>
+      <p class="platform-note">从一个问题开始。</p>
+    </div>
+    <ul v-else class="drawer-body">
       <li
         v-for="conv in conversations"
         :key="conv.id"
@@ -73,18 +80,29 @@ defineExpose({
           class="unread-dot"
           title="有新回复"
         ></span>
-        <span v-if="!authStore.isReviewSession" class="delete" title="删除会话" @click.stop="emit('remove', conv.id)">×</span>
+        <button class="delete" type="button" aria-label="删除会话" title="删除会话" @click.stop="emit('remove', conv.id)"><AppIcon name="delete" :size="14" /></button>
       </li>
-      <li v-if="conversations.length === 0" class="empty">暂无历史会话</li>
+      <li v-if="conversations.length === 0" class="empty">{{ authStore.isLoggedIn ? '暂无历史会话' : '登录后查看历史会话' }}</li>
     </ul>
 
-    <button class="settings-btn" @click="emit('settings')">
-      <span>⚙</span> 设置
-    </button>
+    <nav class="drawer-footer" aria-label="平台入口">
+      <button class="settings-btn" type="button" aria-label="全部功能" @click="collapsed = true; emit('features')">
+        <AppIcon name="features" :size="16" />
+        功能
+      </button>
+      <button class="settings-btn" type="button" aria-label="设置" @click="collapsed = true; emit('settings')">
+        <AppIcon name="settings" :size="16" />
+        设置
+      </button>
+    </nav>
   </aside>
 </template>
 
 <style scoped>
+.delete { border: 0; padding: 2px; background: transparent; display: inline-flex; align-items: center; justify-content: center; color: inherit; cursor: pointer; }
+.new-chat-btn, .icon-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.platform-navigation { padding-top: 1rem; }
+.platform-note { padding: 0 .625rem; font-size: .75rem; color: var(--text); }
 /* ===== 遮罩 ===== */
 .drawer-backdrop {
   position: absolute;
@@ -145,16 +163,7 @@ defineExpose({
   transition: border-color 0.2s, color 0.2s;
 }
 
-.naming-btn {
-  flex-shrink: 0;
-  width: 1.9rem;
-  height: 1.9rem;
-  border: 1px solid var(--border, #e5e4e7);
-  border-radius: .45rem;
-  background: transparent;
-  color: var(--accent, #aa3bff);
-  cursor: pointer;
-}
+.drawer-title { flex: 1; color: var(--text-h); font-size: 15px; font-weight: 600; }
 
 .new-chat-btn:hover {
   border-color: var(--accent, #aa3bff);
@@ -272,27 +281,26 @@ defineExpose({
   color: #e5484d;
 }
 
+.drawer-footer { flex-shrink: 0; display: grid; gap: 4px; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--border); }
 .settings-btn {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 0.375rem;
-  /* 负边距拉满抽屉宽度：border-top 成为通栏分隔线。
-     按钮自身不能带圆角——圆角会把仅有的上边框两端切弯（断线感） */
-  margin: 0.625rem -0.75rem -0.75rem;
-  padding: 0.75rem;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 12px;
   border: none;
-  border-top: 1px solid var(--border, #e5e4e7);
-  border-radius: 0;
+  border-radius: 8px;
   background: transparent;
   font-family: inherit;
   font-size: 0.875rem;
   color: var(--text, #6b6375);
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.2s, color 0.2s;
+  transition: transform 180ms var(--ease-spring), opacity 180ms ease;
 }
+.settings-btn:active { transform: translate3d(0, 0, 0) scale(.97); }
+.settings-btn svg { flex-shrink: 0; width: 16px; height: 16px; }
 
 .settings-btn:hover {
   color: var(--accent, #aa3bff);

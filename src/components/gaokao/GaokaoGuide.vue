@@ -1,24 +1,25 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onDeactivated, onBeforeUnmount, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useFeatureResults } from '../../stores/featureResults'
 import {
   getGaokaoGuide,
   getGaokaoOptions,
-  type GaokaoCoverage,
-  type GaokaoGuideResult,
-  type GaokaoRecommendation,
-  type GaokaoSchoolRecommendation,
 } from '../../api/gaokao'
 
-const emit = defineEmits<{ login: []; catalog: [] }>()
-type TierFilter = '冲' | '稳' | '保'
+const emit = defineEmits<{ login: []; catalog: []; complete: [] }>()
 
+type Metric = 'rank' | 'score'
+const PER_TIER_LIMIT = 30
 const loading = ref(false)
-const result = ref<GaokaoGuideResult | null>(null)
-const coverage = ref<GaokaoCoverage | null>(null)
-const tierFilter = ref<TierFilter>('稳')
-const resultPage = ref(1)
-const resultPageSize = 10
+const showMore = ref(false)
+const reports = useFeatureResults()
+let requestId = 0
+let controller: AbortController | null = null
+function cancelPending() { requestId++; controller?.abort(); controller = null; loading.value = false }
+onDeactivated(cancelPending)
+onBeforeUnmount(cancelPending)
+
 const provinces = ref<string[]>(['四川'])
 const schoolProvinces = ref<string[]>([])
 const referenceYears = ref<number[]>([2026])
@@ -26,9 +27,11 @@ const tracks = ref<string[]>([])
 const provinceTracks = ref<Record<string, string[]>>({})
 const provinceBatches = ref<Record<string, string[]>>({})
 const provinceReferenceBatches = ref<Record<string, Record<string, string[]>>>({})
+const scoreBandProvinces = ref<Set<string>>(new Set())
+
+const metric = ref<Metric>('rank')
 const form = ref({
   candidate_province: '四川',
-  admission_province: '四川',
   school_provinces: [] as string[],
   candidate_year: new Date().getFullYear() + 1,
   reference_year: 2026,
@@ -36,469 +39,179 @@ const form = ref({
   rank: undefined as number | undefined,
   score: undefined as number | undefined,
   batch: '本科普通批',
-  subjects: '',
   keywords: '',
-  sort_by: 'min_score_desc' as 'min_score_desc' | 'min_rank_asc' | 'rank_gap_desc',
 })
+
 const availableTracks = computed(() => provinceTracks.value[form.value.candidate_province] || tracks.value)
+const canUseScore = computed(() => scoreBandProvinces.value.has(form.value.candidate_province))
 
 function undergraduateBatches(batches: string[]) {
   const filtered = batches.filter((batch) => batch.includes('本科') || batch === '提前批')
   return filtered.length ? filtered : ['本科普通批']
 }
 
-const availableBatches = computed(() => (
-  undergraduateBatches(
-    provinceReferenceBatches.value[form.value.admission_province]?.[String(form.value.reference_year)]
-      || provinceBatches.value[form.value.admission_province]
-      || [],
-  )
+const availableBatches = computed(() => undergraduateBatches(
+  provinceReferenceBatches.value[form.value.candidate_province]?.[String(form.value.reference_year)]
+    || provinceBatches.value[form.value.candidate_province]
+    || [],
 ))
-
-const tierCounts = computed(() => result.value?.summary?.tier_counts || { 冲: 0, 稳: 0, 保: 0, 数据不足: 0 })
-const resultCoverage = computed(() => result.value?.coverage || coverage.value)
-const hasRows = computed(() => pagedSchoolItems.value.length > 0)
-const candidateProvince = computed(() => form.value.candidate_province || '当前省份')
-const schoolItems = computed(() => {
-  const items = result.value?.school_recommendations || []
-  return items.filter((item) => item.tier === tierFilter.value)
-})
-const resultPageCount = computed(() => Math.max(1, Math.ceil(schoolItems.value.length / resultPageSize)))
-const pagedSchoolItems = computed(() => {
-  const start = (resultPage.value - 1) * resultPageSize
-  return schoolItems.value.slice(start, start + resultPageSize)
-})
-
-watch(tierFilter, () => { resultPage.value = 1 })
-watch(resultPageCount, (count) => {
-  if (resultPage.value > count) resultPage.value = count
-})
 
 function syncProvinceOptions() {
   const nextTracks = provinceTracks.value[form.value.candidate_province] || tracks.value
-  if (!nextTracks.includes(form.value.track)) form.value.track = nextTracks[0] || ''
+  if (!nextTracks.includes(form.value.track)) form.value.track = nextTracks.includes('物理类') ? '物理类' : (nextTracks[0] || '')
   const nextBatches = availableBatches.value
-  if (!nextBatches.includes(form.value.batch)) form.value.batch = nextBatches.find(b => b === '本科批次B段') || nextBatches.find(b => !b.includes('提前')) || nextBatches[0] || '本科普通批'
+  if (!nextBatches.includes(form.value.batch)) {
+    form.value.batch = nextBatches.find((b) => b === '本科批次B段') || nextBatches.find((b) => !b.includes('提前')) || nextBatches[0] || '本科普通批'
+  }
+  // 没有一分一段表的省份无法把分数换算成位次，只能按位次查。
+  if (!canUseScore.value) metric.value = 'rank'
 }
 
 watch(() => form.value.candidate_province, syncProvinceOptions)
 watch(() => form.value.reference_year, syncProvinceOptions)
+watch([form, metric], () => { cancelPending(); reports.gaokao = null }, { deep: true })
 
 onMounted(async () => {
   try {
     const options = await getGaokaoOptions()
-    // 生源地和全国院校所在地分别取自服务端，不共用一个列表。
     provinces.value = options.provinces?.length ? options.provinces : ['四川']
-    schoolProvinces.value = options.school_provinces?.length ? options.school_provinces : schoolProvinces.value
+    schoolProvinces.value = options.school_provinces || []
     referenceYears.value = options.reference_years?.length ? options.reference_years : options.years
     tracks.value = options.tracks
     provinceTracks.value = options.province_tracks || {}
     provinceBatches.value = options.province_batches || {}
     provinceReferenceBatches.value = options.province_reference_batches || {}
-    coverage.value = options.coverage || null
+    scoreBandProvinces.value = new Set(Object.keys(options.province_score_band_years || {}))
     form.value.candidate_province = provinces.value.includes(form.value.candidate_province) ? form.value.candidate_province : (provinces.value[0] || '四川')
-    form.value.admission_province = form.value.candidate_province
     form.value.reference_year = referenceYears.value[0] || 2026
     form.value.candidate_year = Math.max(form.value.candidate_year, form.value.reference_year + 1)
-    form.value.track ||= availableTracks.value.includes('物理类') ? '物理类' : (tracks.value[0] || '')
     syncProvinceOptions()
   } catch (err) {
     const message = err instanceof Error ? err.message : ''
-    if (message.includes('未登录') || message.includes('登录')) emit('login')
+    if (message.includes('登录')) emit('login')
     else ElMessage.error('查询选项加载失败，请稍后重试。')
   }
 })
 
-watch(() => form.value.candidate_province, (province) => {
-  form.value.admission_province = province
-  syncProvinceOptions()
-})
-
 async function submit() {
   if (loading.value) return
-  result.value = null
-  tierFilter.value = '稳'
-  resultPage.value = 1
   if (!form.value.candidate_province || !form.value.track) {
-    ElMessage.warning('请先选择考生省份和科类。')
+    ElMessage.warning('请先选择省份和科类。')
     return
   }
-  if (!form.value.rank && form.value.score === undefined) {
-    ElMessage.warning('请填写省内位次或高考分数，优先填写位次。')
+  const value = metric.value === 'rank' ? form.value.rank : form.value.score
+  if (!value && value !== 0) {
+    ElMessage.warning(metric.value === 'rank' ? '请填写省内位次。' : '请填写高考分数。')
     return
   }
+  const id = ++requestId
+  controller = new AbortController()
   loading.value = true
   try {
-    result.value = await getGaokaoGuide({
+    const data = await getGaokaoGuide({
       candidate_province: form.value.candidate_province,
-      admission_province: form.value.admission_province,
+      admission_province: form.value.candidate_province,
       school_provinces: form.value.school_provinces,
       candidate_year: form.value.candidate_year,
       reference_year: form.value.reference_year,
       track: form.value.track,
-      rank: form.value.rank,
-      score: form.value.score,
+      rank: metric.value === 'rank' ? form.value.rank : undefined,
+      score: metric.value === 'score' ? form.value.score : undefined,
       batch: form.value.batch,
-      subjects: form.value.subjects.split(/[，,\s+]+/).filter(Boolean),
+      subjects: [],
       preferred_regions: [],
-      keywords: form.value.keywords,
-      limit: 100,
+      keywords: form.value.keywords.trim(),
+      limit: PER_TIER_LIMIT,
       history_years: 5,
-      sort_by: form.value.sort_by,
-    })
+      sort_by: 'smart',
+    }, controller.signal)
+    if (id !== requestId) return
+    reports.gaokao = data
+    emit('complete')
   } catch (err) {
+    if (id !== requestId) return
     const message = err instanceof Error ? err.message : '查询失败，请稍后重试。'
-    if (message.includes('未登录') || message.includes('登录')) emit('login')
+    if (message.includes('登录')) emit('login')
     else ElMessage.error(message)
   } finally {
-    loading.value = false
+    if (id === requestId) loading.value = false
   }
 }
 
-function handleSubmitClick(event: MouseEvent) {
-  event.preventDefault()
-  void submit()
-}
-
-function tierType(tier: GaokaoRecommendation['tier']) {
-  return tier === '保' ? 'success' : tier === '稳' ? 'primary' : tier === '冲' ? 'warning' : 'info'
-}
-
-function displayGap(item: GaokaoRecommendation) {
-  if (item.rank_gap === undefined || item.rank_gap === null) return '暂无可比位次'
-  if (item.rank_gap > 0) return `领先 ${item.rank_gap} 位`
-  if (item.rank_gap < 0) return `落后 ${Math.abs(item.rank_gap)} 位`
-  return '与历史线持平'
-}
-
-function recordKindLabel(item: GaokaoRecommendation) {
-  return item.record_kind === 'major_admit' ? '专业录取线' : '院校专业组投档/录取线'
-}
-
-function formatYears(years: number[]) {
-  return years.length ? years.join('、') : '—'
-}
-
-function schoolRowKey(item: GaokaoSchoolRecommendation) {
-  return `${item.university_name}-${item.school_province || 'unknown'}`
-}
-
-function selectTier(tier: TierFilter) {
-  tierFilter.value = tier
-  resultPage.value = 1
-}
-
-function updateResultPage(page: number) {
-  resultPage.value = Math.min(Math.max(page, 1), resultPageCount.value)
-}
 </script>
 
 <template>
   <main class="gaokao-guide">
-    <section class="guide-intro">
-      <div>
-        <el-tag type="primary" effect="light">投档数据查询</el-tag>
-        <h2>生成志愿指南</h2>
-        <p>支持四川、广东、上海考生。院校可选全国；只比较在考生生源地有投档记录的学校。</p>
-      </div>
-    </section>
-
-    <el-card class="guide-card" shadow="never">
-      <template #header>
-        <div class="card-heading">
-          <span>生成志愿指南</span>
-        </div>
-      </template>
-
-      <el-form label-position="top" class="guide-form" @submit.prevent="submit">
-        <div class="form-section form-section-wide">
-          <div class="form-section-title"><span>1</span>确认成绩口径</div>
-          <div class="form-grid">
-            <el-form-item required>
-              <template #label>考生省份</template>
-              <el-select v-model="form.candidate_province" filterable placeholder="请选择考生省份">
+    <div class="guide-body">
+      <!-- 独立填写页；成功后由父页面切换到结果页。 -->
+      <section class="panel form-panel" aria-label="填写条件">
+        <h2 class="panel-title">填写报考信息</h2>
+        <el-form label-position="top" class="guide-form" @submit.prevent="submit">
+          <div class="field-row">
+            <el-form-item label="省份">
+              <el-select popper-class="app-popper" :popper-options="{ strategy: 'fixed' }" v-model="form.candidate_province" placeholder="选择省份">
                 <el-option v-for="item in provinces" :key="item" :label="item" :value="item" />
               </el-select>
             </el-form-item>
-            <el-form-item required>
-              <template #label>科类 / 口径</template>
-              <el-select v-model="form.track" filterable placeholder="请选择官方科类" clearable>
+            <el-form-item label="科类">
+              <el-select popper-class="app-popper" :popper-options="{ strategy: 'fixed' }" v-model="form.track" placeholder="选择科类">
                 <el-option v-for="item in availableTracks" :key="item" :label="item" :value="item" />
               </el-select>
             </el-form-item>
-            <el-form-item required>
-              <template #label>考生年份（预计）</template>
-              <el-input-number v-model="form.candidate_year" :min="2022" :max="2100" :controls="false" class="full-width" />
-            </el-form-item>
-            <el-form-item>
-              <template #label>省内位次（优先）</template>
-              <el-input-number v-model="form.rank" :min="1" :controls="false" placeholder="如 38000" class="full-width" />
-            </el-form-item>
-            <el-form-item>
-              <template #label>高考分数</template>
-              <el-input-number v-model="form.score" :min="0" :max="1000" :controls="false" placeholder="可选" class="full-width" />
-            </el-form-item>
           </div>
-        </div>
 
-        <div class="form-section form-section-wide">
-          <div class="form-section-title"><span>2</span>选择比较范围</div>
-          <div class="form-grid">
-            <el-form-item>
-              <template #label>院校所在地</template>
-              <el-select v-model="form.school_provinces" multiple collapse-tags filterable clearable placeholder="全国院校（不限地区）">
-                <el-option v-for="item in schoolProvinces" :key="item" :label="item" :value="item" />
-              </el-select>
-            </el-form-item>
-            <el-form-item required>
-              <template #label>对比投档年份</template>
-              <el-select v-model="form.reference_year" placeholder="请选择对比年份">
-                <el-option v-for="item in referenceYears" :key="item" :label="String(item)" :value="item" />
-              </el-select>
-            </el-form-item>
+          <el-form-item class="metric-item">
+            <template #label>
+              <span class="metric-label">
+                我的成绩
+                <el-radio-group v-model="metric" size="small" class="metric-switch">
+                  <el-radio-button value="rank">省内位次</el-radio-button>
+                  <el-radio-button value="score" :disabled="!canUseScore">高考分数</el-radio-button>
+                </el-radio-group>
+              </span>
+            </template>
+            <el-input-number v-if="metric === 'rank'" v-model="form.rank" :min="1" :controls="false" placeholder="例如 38000" class="full-width" @keyup.enter="submit" />
+            <el-input-number v-else v-model="form.score" :min="0" :max="1000" :controls="false" placeholder="例如 590" class="full-width" @keyup.enter="submit" />
+            <p class="field-tip">
+              <template v-if="!canUseScore">{{ form.candidate_province }}暂无一分一段表，请填写位次（成绩单或省考试院查询）。</template>
+              <template v-else-if="metric === 'rank'">位次比分数更准，推荐优先填写。</template>
+              <template v-else>将按最近一年的一分一段表换算成位次。</template>
+            </p>
+          </el-form-item>
+
+          <el-form-item label="想去哪些地区（可选，不选就是全国）">
+            <el-select popper-class="app-popper" :popper-options="{ strategy: 'fixed' }" v-model="form.school_provinces" multiple collapse-tags collapse-tags-tooltip filterable clearable placeholder="全国">
+              <el-option v-for="item in schoolProvinces" :key="item" :label="item" :value="item" />
+            </el-select>
+          </el-form-item>
+
+          <button type="button" class="more-toggle" :aria-expanded="showMore" @click="showMore = !showMore">
+            {{ showMore ? '收起' : '更多条件' }}（批次、对比年份、关键词）<AppIcon :name="showMore ? 'minus' : 'plus'" :size="14" />
+          </button>
+          <div v-show="showMore" class="field-row more-fields">
             <el-form-item label="批次">
-              <el-select v-model="form.batch" placeholder="请选择批次">
-                <el-option v-for="item in availableBatches" :key="item" :label="item" :value="item" />
-              </el-select>
+              <el-select popper-class="app-popper" :popper-options="{ strategy: 'fixed' }" v-model="form.batch"><el-option v-for="item in availableBatches" :key="item" :label="item" :value="item" /></el-select>
             </el-form-item>
-            <el-form-item label="院校 / 专业关键词">
-              <el-input v-model="form.keywords" placeholder="可选，如 计算机" clearable />
+            <el-form-item label="对比哪一年的投档线">
+              <el-select popper-class="app-popper" :popper-options="{ strategy: 'fixed' }" v-model="form.reference_year"><el-option v-for="item in referenceYears" :key="item" :label="`${item} 年`" :value="item" /></el-select>
             </el-form-item>
-          </div>
-        </div>
-
-        <div class="form-section form-section-wide">
-          <div class="form-section-title"><span>3</span>补充筛选与生成</div>
-          <div class="form-grid">
-            <el-form-item label="选科组合">
-              <el-input v-model="form.subjects" placeholder="如 物理 化学" clearable />
-            </el-form-item>
-            <el-form-item label="结果排序">
-              <el-select v-model="form.sort_by">
-                <el-option label="最低投档/录取分：高 → 低" value="min_score_desc" />
-                <el-option label="最低位次：优 → 劣" value="min_rank_asc" />
-                <el-option label="安全余量：高 → 低" value="rank_gap_desc" />
-              </el-select>
-            </el-form-item>
-            <el-form-item class="form-actions">
-              <el-button type="primary" native-type="submit" :loading="loading" :disabled="loading" size="large" @click="handleSubmitClick">
-                {{ loading ? '查询中…' : '生成志愿指南' }}
-              </el-button>
+            <el-form-item label="院校 / 专业关键词" class="span-all">
+              <el-input v-model="form.keywords" placeholder="例如 计算机、师范" clearable @keyup.enter="submit" />
             </el-form-item>
           </div>
-        </div>
-      </el-form>
 
-    </el-card>
+          <el-button type="primary" native-type="submit" size="large" class="submit-btn" :loading="loading" @click.prevent="submit">
+            {{ loading ? '查询中…' : '看看能上哪些学校' }}
+          </el-button>
+        </el-form>
+      </section>
 
-    <el-card v-if="result" class="guide-result" shadow="never">
-      <div class="result-heading">
-        <div>
-          <h3>查询结果</h3>
-          <p>已按 {{ result.summary?.sort_by === 'min_rank_asc' ? '最低位次' : result.summary?.sort_by === 'rank_gap_desc' ? '安全余量' : '最低投档/录取分' }} 排序</p>
-        </div>
-        <el-button text type="primary" @click="submit">重新查询</el-button>
-      </div>
-      <div class="summary-grid">
-        <div class="summary-item summary-total"><strong>{{ result.summary?.matched_count ?? result.recommendations.length }}</strong><span>匹配记录</span></div>
-        <button class="summary-item summary-risk" type="button" @click="selectTier('冲')"><strong>{{ tierCounts['冲'] }}</strong><span>冲</span></button>
-        <button class="summary-item summary-stable" type="button" @click="selectTier('稳')"><strong>{{ tierCounts['稳'] }}</strong><span>稳</span></button>
-        <button class="summary-item summary-safe" type="button" @click="selectTier('保')"><strong>{{ tierCounts['保'] }}</strong><span>保</span></button>
-      </div>
-      <div class="result-toolbar">
-        <el-radio-group v-model="tierFilter" size="small">
-          <el-radio-button label="冲">冲</el-radio-button>
-          <el-radio-button label="稳">稳</el-radio-button>
-          <el-radio-button label="保">保</el-radio-button>
-        </el-radio-group>
-        <span class="result-count">当前显示 {{ schoolItems.length }} 所{{ tierFilter }}档学校，每页 {{ resultPageSize }} 条</span>
-      </div>
-      <el-empty v-if="!hasRows" :description="`暂无满足${candidateProvince}省口径的本科投档数据`" />
-      <div v-else class="result-table-wrap">
-        <el-table class="result-table-desktop" :data="pagedSchoolItems" :row-key="schoolRowKey" border stripe height="620">
-          <el-table-column type="expand" width="42">
-            <template #default="scope">
-              <div class="detail-panel">
-                <p>{{ scope.row.reason }}</p>
-                <p>学校维度最低分：{{ scope.row.min_score ?? '—' }}；最低位次：{{ scope.row.min_rank ?? '—' }}；数据质量：{{ scope.row.data_quality || '无可用数据' }}。</p>
-                <p v-if="scope.row.comparison_mode === 'score_only'">当前仅有可比较的最低分，未做跨年份或跨省位次推算。</p>
-                <p>点击下方专业行查看具体专业的录取/投档数据。</p>
-                <el-table :data="scope.row.majors" size="small" border>
-                  <el-table-column prop="major_name" label="专业" min-width="180" />
-                  <el-table-column prop="group_name" label="专业组" min-width="130" />
-                  <el-table-column label="最低分" width="95"><template #default="major">{{ major.row.min_score ?? '—' }}</template></el-table-column>
-                  <el-table-column label="最低位次" width="105"><template #default="major">{{ major.row.min_rank ?? '—' }}</template></el-table-column>
-                  <el-table-column label="数据层级" min-width="150"><template #default="major">{{ recordKindLabel(major.row) }}</template></el-table-column>
-                  <el-table-column label="同分排序" min-width="180"><template #default="major">{{ major.row.tie_breaker || '—' }}</template></el-table-column>
-                </el-table>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="档位" width="78" fixed>
-            <template #default="scope"><el-tag :type="tierType(scope.row.tier)" effect="dark">{{ scope.row.tier }}</el-tag></template>
-          </el-table-column>
-          <el-table-column label="院校" min-width="230">
-            <template #default="scope">
-              <div class="school-cell"><strong>{{ scope.row.university_name }}</strong><span>{{ scope.row.school_province || '未标注' }} · 点击展开 {{ scope.row.major_count }} 个专业</span></div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="min_score" label="最低分" width="110" sortable>
-            <template #default="scope"><span>{{ scope.row.min_score ?? '—' }}</span><small class="column-note">学校最低投档/录取分</small></template>
-          </el-table-column>
-          <el-table-column prop="min_rank" label="最低位次" width="110" sortable>
-            <template #default="scope">{{ scope.row.min_rank ?? '—' }}</template>
-          </el-table-column>
-          <el-table-column label="与你差值" width="120">
-            <template #default="scope"><span :class="scope.row.rank_gap < 0 ? 'gap-risk' : 'gap-safe'">{{ displayGap(scope.row) }}</span></template>
-          </el-table-column>
-          <el-table-column label="年份 / 数据" min-width="130">
-            <template #default="scope"><span>{{ formatYears(scope.row.historical_years) }}</span><small class="column-note">{{ scope.row.data_quality || '无可用数据' }}</small></template>
-          </el-table-column>
-        </el-table>
-        <div class="result-cards-mobile" aria-label="学校推荐列表">
-          <details v-for="school in pagedSchoolItems" :key="schoolRowKey(school)" class="school-mobile-card">
-            <summary>
-              <span class="school-mobile-summary-main">
-                <el-tag :type="tierType(school.tier)" effect="dark">{{ school.tier }}</el-tag>
-                <span><strong>{{ school.university_name }}</strong><small>{{ school.school_province || '未标注' }} · {{ school.major_count }} 个专业</small></span>
-              </span>
-              <span class="school-mobile-summary-metrics">
-                <span class="school-mobile-summary-score">{{ school.min_score ?? '—' }}<small>最低分</small></span>
-                <span class="school-mobile-summary-rank">{{ school.min_rank ?? '—' }}<small>最低位次</small></span>
-              </span>
-            </summary>
-            <div class="school-mobile-detail">
-              <p>{{ school.reason }}</p>
-              <p>最低位次：{{ school.min_rank ?? '—' }}；{{ school.data_quality || '无可用数据' }}</p>
-              <div v-for="major in school.majors" :key="`${schoolRowKey(school)}-${major.group_name}-${major.major_name}`" class="major-mobile-row">
-                <strong>{{ major.major_name || major.group_name || '未标注专业' }}</strong>
-                <span>最低分 {{ major.min_score ?? '—' }} · 最低位次 {{ major.min_rank ?? '—' }}</span>
-              </div>
-            </div>
-          </details>
-        </div>
-      </div>
 
-      <el-pagination
-        v-if="schoolItems.length > resultPageSize"
-        class="guide-pagination"
-        :current-page="resultPage"
-        :page-size="resultPageSize"
-        :total="schoolItems.length"
-        :pager-count="5"
-        layout="prev, pager, next"
-        background
-        small
-        @current-change="updateResultPage"
-      />
-
-      <el-collapse v-if="result.sources.length" class="source-collapse">
-        <el-collapse-item :title="`数据来源（${result.sources.length}）`" name="sources">
-          <div v-for="source in result.sources" :key="source.id">
-            <a v-if="source.url" :href="source.url" target="_blank" rel="noopener noreferrer">{{ source.publisher }} · {{ source.year }}</a>
-            <span v-else>{{ source.publisher }} · {{ source.year }}</span>
-          </div>
-        </el-collapse-item>
-      </el-collapse>
-    </el-card>
-
-    <footer class="guide-footer-notes">
-      <p>数据范围、生成规则与免责说明</p>
-      <p>填写规则：优先填写考生在本地省份的省内位次；没有位次时可填写分数。位次、科类和批次必须与考生本地口径一致。</p>
-      <p>当前院校所在地范围：{{ resultCoverage?.selected_school_provinces?.join('、') || '不限' }}；展示已收录的官方投档/录取记录，不代表全部本科院校。</p>
-      <p>{{ result?.rule_note || '生成规则：使用考生本地省内排位，比较学校在考生本地招生口径下的最低投档/录取门槛。' }}</p>
-      <p v-for="warning in result?.warnings || []" :key="warning">{{ warning }}</p>
-      <p>数据仅供志愿填报参考，不构成录取承诺；政策、计划、专业组和录取结果以当年省教育考试院及招生院校官方发布为准。</p>
-      <button class="footer-catalog-link" type="button" @click="emit('catalog')">查询已收录高校表</button>
-    </footer>
+      <p class="foot-link">
+        <button type="button" class="catalog-link" @click="emit('catalog')">只想查某所学校？<AppIcon name="search" :size="16" /> 按校名查询已收录院校</button>
+      </p>
+    </div>
   </main>
 </template>
 
-<style scoped>
-.gaokao-guide { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 1.25rem clamp(1rem, 5vw, 5rem) 1.5rem; color: var(--text-h, #08060d); background: var(--bg, #fff); }
-.guide-intro, .guide-card, .guide-result, .guide-footer-notes { width: min(70rem, 100%); margin-right: auto; margin-left: auto; }
-.guide-intro { margin-bottom: .8rem; }
-.guide-intro h2 { margin: .55rem 0 .3rem; font-size: 1.35rem; }
-.guide-intro p { margin: 0; color: var(--text, #6b6375); font-size: .85rem; }
-.guide-card, .guide-result { border-radius: .75rem; }
-.card-heading { display: flex; align-items: center; gap: .4rem; font-weight: 600; }
-.guide-form { display: grid; gap: .85rem; }
-.form-section { padding: .85rem; border: 1px solid var(--el-border-color-lighter); border-radius: .65rem; background: color-mix(in srgb, var(--el-fill-color-light) 42%, transparent); }
-.form-section-title { display: flex; align-items: center; gap: .45rem; margin-bottom: .75rem; color: var(--el-text-color-primary); font-weight: 650; font-size: .9rem; }
-.form-section-title span { width: 1.35rem; height: 1.35rem; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; color: #fff; background: var(--el-color-primary); font-size: .75rem; }
-.form-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .1rem 1rem; }
-.guide-form :deep(.el-form-item) { min-width: 0; margin-bottom: .55rem; }
-.guide-form :deep(.el-select), .guide-form :deep(.el-input), .guide-form :deep(.el-input-number) { width: 100%; }
-.column-note { display: block; color: var(--el-text-color-secondary); font-size: .72rem; line-height: 1.35; }
-.full-width { width: 100%; }
-.form-actions { grid-column: span 2; align-self: end; }
-.form-actions :deep(.el-form-item__content) { justify-content: flex-end; }
-.form-actions .el-button { min-width: 12rem; }
-.guide-error { margin-top: .5rem; }
-.guide-result { margin-top: .8rem; }
-.result-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .75rem; }
-.result-heading h3 { margin: 0; font-size: 1.05rem; }
-.result-heading p { margin: .2rem 0 0; color: var(--el-text-color-secondary); font-size: .78rem; }
-.summary-grid { display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: .55rem; margin-bottom: .75rem; }
-.summary-item { min-height: 4.1rem; display: flex; flex-direction: column; justify-content: center; gap: .1rem; padding: .6rem .75rem; border: 1px solid var(--el-border-color-lighter); border-radius: .6rem; color: var(--el-text-color-secondary); background: var(--el-fill-color-light); text-align: left; }
-button.summary-item { cursor: pointer; font: inherit; }
-.summary-item strong { color: var(--el-text-color-primary); font-size: 1.35rem; line-height: 1.1; }
-.summary-total strong { color: var(--el-color-primary); }
-.summary-risk strong { color: var(--el-color-warning); }
-.summary-stable strong { color: var(--el-color-primary); }
-.summary-safe strong { color: var(--el-color-success); }
-.result-toolbar { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin: .8rem 0 .55rem; }
-.result-count { color: var(--el-text-color-secondary); font-size: .78rem; }
-.result-table-wrap { width: 100%; max-width: 100%; overflow: hidden; border-radius: .45rem; }
-.result-table-wrap :deep(.el-table) { min-width: 980px; }
-.guide-pagination { display: flex; justify-content: center; max-width: 100%; margin: .85rem auto 0; overflow-x: auto; }
-.result-cards-mobile { display: none; }
-.school-cell { display: flex; flex-direction: column; gap: .12rem; min-width: 0; }
-.school-cell strong { color: var(--el-text-color-primary); font-size: .84rem; }
-.school-cell span { overflow: hidden; color: var(--el-text-color-secondary); font-size: .73rem; text-overflow: ellipsis; white-space: nowrap; }
-.gap-risk { color: var(--el-color-warning); font-weight: 600; }
-.gap-safe { color: var(--el-color-success); font-weight: 600; }
-.detail-panel { padding: .45rem 1rem; color: var(--el-text-color-regular); font-size: .78rem; line-height: 1.6; }
-.detail-panel p { margin: .15rem 0; }
-.source-collapse { margin-top: .8rem; }
-.source-collapse a { display: block; margin-top: .35rem; color: var(--el-color-primary); font-size: .8rem; }
-.guide-footer-notes { margin-top: .85rem; padding: .45rem .1rem .1rem; color: var(--el-text-color-secondary); font-size: .7rem; line-height: 1.5; }
-.guide-footer-notes > p:first-child { color: var(--el-text-color-regular); font-weight: 600; }
-.guide-footer-notes p { margin: .35rem 0 0; }
-.footer-catalog-link { margin-top: .35rem; padding: 0; border: 0; color: var(--el-color-primary); background: transparent; font: inherit; cursor: pointer; }
-@media (max-width: 980px) { .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-@media (max-width: 720px) {
-  .gaokao-guide { padding: .75rem .75rem 1rem; }
-  .guide-intro h2 { font-size: 1.18rem; }
-  .guide-intro p { font-size: .78rem; }
-  .guide-card, .guide-result { border-radius: .6rem; }
-  .form-section { padding: .7rem; }
-  .form-grid { grid-template-columns: 1fr; }
-  .form-actions { grid-column: auto; }
-  .form-actions :deep(.el-form-item__content) { justify-content: stretch; }
-  .form-actions .el-button { width: 100%; }
-  .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .summary-total { grid-column: 1 / -1; }
-  .result-toolbar { align-items: flex-start; flex-direction: column; }
-  .result-toolbar :deep(.el-radio-group) { display: flex; width: 100%; flex-wrap: wrap; }
-  .result-toolbar :deep(.el-radio-button) { flex: 1 0 auto; }
-  .result-table-wrap { overflow: visible; }
-  .result-table-desktop { display: none; }
-  .result-cards-mobile { display: grid; gap: .55rem; }
-  .school-mobile-card { overflow: hidden; border: 1px solid var(--el-border-color-lighter); border-radius: .65rem; background: var(--el-bg-color, var(--bg, #fff)); }
-  .school-mobile-card summary { display: flex; align-items: center; justify-content: space-between; gap: .55rem; padding: .7rem; cursor: pointer; list-style: none; }
-  .school-mobile-card summary::-webkit-details-marker { display: none; }
-  .school-mobile-summary-main { min-width: 0; display: flex; align-items: center; gap: .5rem; }
-  .school-mobile-summary-main > span { min-width: 0; display: flex; flex-direction: column; gap: .1rem; }
-  .school-mobile-summary-main strong { overflow: hidden; color: var(--el-text-color-primary); font-size: .86rem; text-overflow: ellipsis; white-space: nowrap; }
-  .school-mobile-summary-main small, .school-mobile-summary-score small, .school-mobile-summary-rank small { color: var(--el-text-color-secondary); font-size: .67rem; }
-  .school-mobile-summary-metrics { flex-shrink: 0; display: flex; align-items: flex-end; gap: .65rem; }
-  .school-mobile-summary-score, .school-mobile-summary-rank { display: flex; flex-direction: column; align-items: flex-end; color: var(--el-text-color-primary); font-size: .88rem; font-weight: 650; }
-  .school-mobile-detail { padding: .65rem .7rem .75rem; border-top: 1px solid var(--el-border-color-lighter); color: var(--el-text-color-regular); font-size: .74rem; line-height: 1.5; }
-  .school-mobile-detail p { margin: 0 0 .35rem; }
-  .major-mobile-row { display: flex; flex-direction: column; gap: .05rem; padding: .45rem 0; border-top: 1px dashed var(--el-border-color-lighter); }
-  .major-mobile-row strong { color: var(--el-text-color-primary); font-size: .77rem; }
-  .major-mobile-row span { color: var(--el-text-color-secondary); font-size: .7rem; }
-}
-@media (max-width: 620px) { .result-heading { align-items: flex-start; flex-direction: column; } .guide-pagination :deep(.el-pager) { max-width: 11rem; overflow: hidden; } }
-</style>
+<style scoped src="./guide.css"></style>

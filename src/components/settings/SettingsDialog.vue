@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /**
- * 设置弹窗（左侧栏「⚙ 设置」入口）：关于我们（备案号/作者/代码仓库）+ 退出登录。
+ * 全局设置：访客可查看关于；登录后可退出账户。
  */
 import BaseDialog from '../common/BaseDialog.vue'
+import FilingLinks from '../common/FilingLinks.vue'
 import { useAuthStore } from '../../stores/auth'
 
 defineProps<{
@@ -13,6 +14,7 @@ const emit = defineEmits<{
   close: []
   /** 退出登录后触发（父组件清空会话状态） */
   logout: []
+  about: []
 }>()
 
 const auth = useAuthStore()
@@ -39,15 +41,15 @@ function handleLogout() {
             github.com/Conlin-Git
           </a>
         </div>
-        <div class="about-row">
+        <div class="about-row filing-row">
           <span class="about-label">备案号</span>
-          <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">
-            粤ICP备2026143546号
-          </a>
+          <FilingLinks align="start" />
         </div>
       </section>
 
-      <button v-if="!auth.isReviewSession" class="logout-btn" @click="handleLogout">退出登录</button>
+      <button class="about-btn" type="button" @click="emit('close'); emit('about')"><AppIcon name="info" :size="16" /> 关于与模型来源</button>
+
+      <button v-if="auth.isLoggedIn" class="logout-btn" @click="handleLogout">退出登录</button>
     </div>
   </BaseDialog>
 </template>
@@ -96,6 +98,8 @@ function handleLogout() {
   text-decoration: underline;
 }
 
+.filing-row { align-items: flex-start; font-size: .75rem; }
+
 .logout-btn {
   padding: 0.625rem;
   border: 1px solid var(--border, #e5e4e7);
@@ -105,8 +109,11 @@ function handleLogout() {
   color: #e5484d;
   background: transparent;
   cursor: pointer;
-  transition: color 0.2s, border-color 0.2s, background 0.2s;
+  transition: transform 180ms var(--ease-spring), opacity 180ms ease;
 }
+
+.about-btn { padding: .625rem; border: 1px solid var(--border); border-radius: .5rem; color: var(--text-h); background: transparent; font: inherit; font-size: .875rem; cursor: pointer; }
+.about-btn:hover { background: var(--code-bg); }
 
 .logout-btn:hover {
   border-color: #e5484d;

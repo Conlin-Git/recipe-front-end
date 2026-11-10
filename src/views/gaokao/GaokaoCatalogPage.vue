@@ -11,10 +11,10 @@ const emit = defineEmits<{
   <div class="gaokao-subpage">
     <header class="gaokao-subpage-header">
       <button class="back-icon" type="button" title="返回志愿指南" aria-label="返回志愿指南" @click="emit('navigate', 'gaokao-guide')">
-        <span aria-hidden="true">←</span>
+        <AppIcon name="back" />
       </button>
       <div class="page-title">
-        <span class="page-title-mark" aria-hidden="true">▤</span>
+        <span class="page-title-mark" aria-hidden="true"><AppIcon name="school" :size="20" /></span>
         <div><h1>本科院校总表</h1><p>查询已收录的院校与本地招生数据</p></div>
       </div>
       <span class="page-header-spacer" aria-hidden="true"></span>

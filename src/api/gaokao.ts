@@ -15,7 +15,7 @@ export interface GaokaoGuidePayload {
   keywords: string
   limit: number
   history_years?: number
-  sort_by?: 'min_score_desc' | 'min_rank_asc' | 'rank_gap_desc'
+  sort_by?: 'min_score_desc' | 'min_rank_asc' | 'rank_gap_desc' | 'smart'
 }
 
 export interface GaokaoRecommendation {
@@ -60,6 +60,7 @@ export interface GaokaoGuideResult {
     matched_count: number
     returned_count: number
     tier_counts: Record<'冲' | '稳' | '保' | '数据不足', number>
+    returned_school_count?: number
     available_years?: number[]
     sort_by?: string
   }
@@ -95,7 +96,15 @@ export interface GaokaoSchoolRecommendation {
   historical_years: number[]
   confidence: '高' | '中' | '低'
   reason: string
-  majors: GaokaoRecommendation[]
+  majors: GaokaoSchoolMajor[]
+}
+
+/** 学校行内的专业预览：只含名称与分数线，完整证据链留在后端。 */
+export interface GaokaoSchoolMajor {
+  major_name?: string
+  group_name?: string
+  min_score?: number | null
+  min_rank?: number | null
 }
 
 export interface GaokaoCoverage {
@@ -138,6 +147,7 @@ export function getGaokaoOptions() {
     years: number[]
     reference_years?: number[]
     score_band_years?: number[]
+    province_score_band_years?: Record<string, number[]>
     tracks: string[]
     province_tracks: Record<string, string[]>
     province_batches: Record<string, string[]>
@@ -147,8 +157,8 @@ export function getGaokaoOptions() {
   }>('/gaokao/options')
 }
 
-export function getGaokaoGuide(payload: GaokaoGuidePayload) {
-  return request<GaokaoGuideResult>('/gaokao/guide', { method: 'POST', body: JSON.stringify(payload) })
+export function getGaokaoGuide(payload: GaokaoGuidePayload, signal?: AbortSignal) {
+  return request<GaokaoGuideResult>('/gaokao/guide', { method: 'POST', body: JSON.stringify(payload), signal })
 }
 
 export function getGaokaoCatalog(payload: {

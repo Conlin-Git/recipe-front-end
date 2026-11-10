@@ -140,8 +140,9 @@ defineExpose({ scrollToBottom })
       </div>
 
       <div v-if="messages.length === 0" class="chat-empty">
-        <p>哟，来啦！我是 Conlin 🍳</p>
-        <p>白天写代码，下班颠勺，天南海北的菜随便问，JS 红宝书我倒背如流～</p>
+        <span class="welcome-robot" aria-hidden="true"><AppIcon name="chat" :size="30" /></span>
+        <h2>你好，我是阿福</h2>
+        <p>可以问我菜谱、编程，或聊聊日常问题。</p>
         <button v-if="!authStore.isLoggedIn" class="welcome-login-btn" @click="emit('login')">
           登录 / 注册
         </button>
@@ -173,15 +174,7 @@ defineExpose({ scrollToBottom })
         title="回到底部"
         @click="scrollToBottom(true)"
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-          <path
-            d="M6 9l6 6 6-6"
-            stroke="currentColor"
-            stroke-width="2.5"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          />
-        </svg>
+        <AppIcon name="top" />
       </button>
     </Transition>
   </div>
@@ -205,7 +198,7 @@ defineExpose({ scrollToBottom })
   padding: 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.5rem;
 }
 
 /* 停止/继续生成按钮：跟在流式消息下面，居中展示 */
@@ -223,7 +216,7 @@ defineExpose({ scrollToBottom })
   color: var(--text, #6b6375);
   background: var(--bg, #fff);
   cursor: pointer;
-  transition: color 0.2s, border-color 0.2s;
+  transition: transform 180ms var(--ease-spring), opacity 180ms ease;
 }
 
 .gen-btn:hover {
@@ -258,7 +251,7 @@ defineExpose({ scrollToBottom })
   background: var(--bg, #fff);
   box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
   cursor: pointer;
-  transition: color 0.2s, border-color 0.2s;
+  transition: transform 180ms var(--ease-spring), opacity 180ms ease;
 }
 
 .back-to-bottom:hover {
@@ -274,15 +267,20 @@ defineExpose({ scrollToBottom })
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
-  transform: translateY(0.5rem);
+  transform: translate3d(0, 6px, 0);
 }
 
 .chat-empty {
   margin: auto;
   text-align: center;
   color: var(--text, #6b6375);
-  line-height: 2;
+  padding: 1rem 0;
+  line-height: 1.7;
 }
+
+.welcome-robot { display: inline-flex; align-items: center; justify-content: center; width: 4rem; height: 4rem; border: 1px solid var(--border); border-radius: 20px; color: var(--accent); background: var(--surface); box-shadow: var(--surface-shadow); font-size: 2rem; }
+.chat-empty h2 { margin: 1rem 0 .4rem; color: var(--text-h); font-size: 1.3rem; font-weight: 600; }
+.chat-empty p { margin: 0; font-size: .875rem; }
 
 /* 顶部下拉加载提示：小字弱化，不抢视觉 */
 .history-loading {

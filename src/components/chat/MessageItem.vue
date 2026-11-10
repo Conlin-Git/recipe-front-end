@@ -2,6 +2,7 @@
 import { nextTick, ref, watch } from 'vue'
 import UserAvatar from '../common/UserAvatar.vue'
 import type { Message } from '../../types/chat'
+import { createAnswerPresentation, presentAnswer } from '../../utils/answerPresentation'
 
 const props = defineProps<{
   message: Message
@@ -16,10 +17,13 @@ const emit = defineEmits<{
 }>()
 
 const bubbleRef = ref<HTMLElement>()
+const presentation = createAnswerPresentation()
 
 /** 给代码块注入复制按钮。v-html 每次更新都重建 DOM，注入的按钮会被清掉，需要重新注入 */
 async function enhanceCodeBlocks() {
   await nextTick()
+  const content = bubbleRef.value?.querySelector<HTMLElement>('.message-html, .message-text')
+  if (content && props.message.role === 'assistant') presentAnswer(content, !!props.streaming, presentation)
   bubbleRef.value?.querySelectorAll('pre').forEach((pre) => {
     if (pre.querySelector('.code-copy-btn')) return
     const btn = document.createElement('button')
@@ -30,7 +34,7 @@ async function enhanceCodeBlocks() {
   })
 }
 
-watch(() => props.message.html, enhanceCodeBlocks, { immediate: true })
+watch(() => [props.message.html, props.message.content, props.streaming], enhanceCodeBlocks, { immediate: true })
 
 /** 事件委托：按钮随 v-html 重建，点击监听挂在气泡容器上 */
 function onBubbleClick(event: MouseEvent) {
@@ -80,7 +84,7 @@ function onBubbleClick(event: MouseEvent) {
   display: flex;
   align-items: flex-start;
   gap: 0.625rem;
-  max-width: 85%;
+  max-width: 92%;
   /* 新消息入场：上浮淡入，GPU 友好 */
   animation: message-in 0.25s ease-out;
 }
@@ -88,11 +92,11 @@ function onBubbleClick(event: MouseEvent) {
 @keyframes message-in {
   from {
     opacity: 0;
-    transform: translateY(0.5rem);
+    transform: translate3d(0, 6px, 0);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
   }
 }
 
@@ -106,9 +110,9 @@ function onBubbleClick(event: MouseEvent) {
 }
 
 .message-bubble {
-  padding: 0.625rem 0.875rem;
-  border-radius: 0.75rem;
-  line-height: 1.6;
+  padding: 1rem 1.15rem;
+  border-radius: var(--radius-card);
+  line-height: 1.85;
   font-size: 0.9375rem;
   white-space: pre-wrap;
   /* 关键：气泡是 flex 子项，默认 min-width:auto 会被长代码行撑出屏幕，
@@ -121,15 +125,17 @@ function onBubbleClick(event: MouseEvent) {
 }
 
 .message-bubble.user {
-  background: var(--accent, #aa3bff);
+  background: #2862d9;
   color: #fff;
   border-top-right-radius: 0.25rem;
 }
 
 .message-bubble.assistant {
-  background: var(--code-bg, #f4f3ec);
+  background: var(--surface);
   color: var(--text-h, #08060d);
-  border-top-left-radius: 0.25rem;
+  border: 1px solid var(--border);
+  box-shadow: var(--surface-shadow);
+  border-top-left-radius: 6px;
 }
 
 .retry-btn {
@@ -151,7 +157,7 @@ function onBubbleClick(event: MouseEvent) {
 
 /* 富文本内容排版（v-html 内部元素需用 :deep 穿透 scoped） */
 .message-html {
-  line-height: 1.7;
+  line-height: 1.85;
   /* 覆盖气泡的 pre-wrap：HTML 源码里标签间的换行不能再渲染成空行 */
   white-space: normal;
 }
@@ -160,7 +166,7 @@ function onBubbleClick(event: MouseEvent) {
 .message-html :deep(h2),
 .message-html :deep(h3),
 .message-html :deep(h4) {
-  margin: 0.75rem 0 0.375rem;
+  margin: 1.15rem 0 .5rem;
   font-size: 1rem;
   font-weight: 600;
   line-height: 1.4;
@@ -174,7 +180,7 @@ function onBubbleClick(event: MouseEvent) {
 }
 
 .message-html :deep(p) {
-  margin: 0.375rem 0;
+  margin: .6rem 0;
 }
 
 .message-html :deep(ul),
@@ -202,13 +208,6 @@ function onBubbleClick(event: MouseEvent) {
     rgba(0, 0, 0, 0.09) 50%,
     rgba(0, 0, 0, 0.04) 60%
   );
-  background-size: 200% 100%;
-  animation: img-shimmer 1.4s linear infinite;
-}
-
-@keyframes img-shimmer {
-  from { background-position: 200% 0; }
-  to { background-position: -200% 0; }
 }
 
 .message-html :deep(code) {
@@ -261,16 +260,9 @@ function onBubbleClick(event: MouseEvent) {
   opacity: 1;
 }
 
-.message-html :deep(table) {
-  border-collapse: collapse;
-  margin: 0.5rem 0;
-}
-
-.message-html :deep(th),
-.message-html :deep(td) {
-  padding: 0.375rem 0.75rem;
-  border: 1px solid var(--border, #e5e4e7);
-}
+.message-html :deep(.answer-records) { margin: 1rem 0; }
+.message-html :deep(.answer-record + .answer-record) { margin-top: 1.25rem; padding-top: 1rem; border-top: 1px solid var(--border); }
+.message-html :deep(.answer-record p) { margin: .35rem 0; line-height: 1.8; }
 
 .message-html :deep(blockquote) {
   margin: 0.5rem 0;
@@ -287,7 +279,7 @@ function onBubbleClick(event: MouseEvent) {
 
 /* 流式中 HTML 容器转 inline：光标才能接在末尾文字同一行（流式结束自动还原块级布局） */
 .message-html.streaming {
-  display: inline;
+  display: block;
 }
 
 /* SSE 流式光标：细竖线闪烁，跟在最后内容尾部 */
@@ -297,7 +289,7 @@ function onBubbleClick(event: MouseEvent) {
   height: 1em;
   margin-left: 0.125rem;
   vertical-align: -0.125em;
-  background: var(--text-h, #08060d);
+  background: var(--accent);
   animation: cursor-blink 0.9s ease infinite;
 }
 
@@ -332,5 +324,32 @@ function onBubbleClick(event: MouseEvent) {
 @keyframes blink {
   0%, 80%, 100% { opacity: 0.3; }
   40% { opacity: 1; }
+}
+
+/* No added inline padding: highlighting does not change the original text's measure. */
+.message-bubble :deep(.answer-entity) {
+  color: inherit;
+  border-radius: 4px;
+  background: linear-gradient(180deg, transparent 12%, var(--entity-tint) 12%, var(--entity-tint) 92%, transparent 92%);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.message-bubble :deep(.entity-school) { --entity-tint: #dceaff; color: #204f9e; }
+.message-bubble :deep(.entity-major) { --entity-tint: #e8e5fb; color: #57438c; }
+.message-bubble :deep(.entity-rank) { --entity-tint: #dcf2eb; color: #17634d; font-variant-numeric: tabular-nums; }
+.message-bubble :deep(.stream-char) { display: inline-block; animation: answer-char-in 240ms var(--ease-out) both; }
+@keyframes answer-char-in {
+  from { opacity: .25; transform: translate3d(0, 2px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@media (prefers-color-scheme: dark) {
+  .message-bubble :deep(.entity-school) { --entity-tint: #243d60; color: #bbd5ff; }
+  .message-bubble :deep(.entity-major) { --entity-tint: #39314f; color: #ddd1ff; }
+  .message-bubble :deep(.entity-rank) { --entity-tint: #213f36; color: #a4e1cc; }
+}
+@media (hover: none) { .message-html :deep(.code-copy-btn) { opacity: 1; } }
+@media (max-width: 680px) {
+  .message-row { max-width: 100%; gap: 8px; }
+  .message-bubble { padding: 12px 14px; font-size: 14px; }
 }
 </style>

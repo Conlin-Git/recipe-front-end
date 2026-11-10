@@ -20,7 +20,7 @@ const emit = defineEmits<{
         <div class="dialog-card" role="dialog" :aria-label="title">
           <div class="dialog-header">
             <h2 class="dialog-title">{{ title }}</h2>
-            <button class="dialog-close" title="关闭" @click="emit('close')">×</button>
+            <button class="dialog-close" title="关闭" @click="emit('close')" aria-label="关闭"><AppIcon name="close" /></button>
           </div>
           <div class="dialog-body">
             <slot />
@@ -111,7 +111,7 @@ const emit = defineEmits<{
   line-height: 1;
   color: var(--text, #6b6375);
   cursor: pointer;
-  transition: color 0.2s, background 0.2s;
+  transition: transform 180ms ease, opacity 180ms ease;
 }
 
 .dialog-close:hover {

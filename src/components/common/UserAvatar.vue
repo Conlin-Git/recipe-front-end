@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 统一头像组件：有 avatar_url 显示图片，否则显示默认 emoji。
+ * 统一头像组件：有 avatar_url 显示图片，否则使用 Element 图标。
  */
 import { computed, ref, watch } from 'vue'
 
@@ -37,7 +37,8 @@ const sizeRem = computed(() => `${props.size / 16}rem`)
       class="avatar-img"
       @error="handleImageError"
     />
-    <span v-else>{{ role === 'assistant' ? '🤖' : '👤' }}</span>
+    <AppIcon v-else-if="role === 'assistant'" name="chat" :size="20" />
+    <AppIcon v-else name="user" :size="20" />
   </div>
 </template>
 
@@ -58,4 +59,5 @@ const sizeRem = computed(() => `${props.size / 16}rem`)
   height: 100%;
   object-fit: cover;
 }
+.avatar.assistant { border-radius: 11px; color: var(--accent); background: var(--accent-bg); }
 </style>

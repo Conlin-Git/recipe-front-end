@@ -58,7 +58,7 @@ function onKeydown(e: KeyboardEvent) {
   gap: 0.625rem;
   padding: 0.875rem 1.25rem;
   border-top: 1px solid var(--border, #e5e4e7);
-  background: var(--bg, #fff);
+  background: var(--canvas);
 }
 
 .chat-input {
@@ -74,10 +74,10 @@ function onKeydown(e: KeyboardEvent) {
   font-family: inherit;
   line-height: 1.5;
   color: var(--text-h, #08060d);
-  background: var(--code-bg, #f4f3ec);
+  background: var(--surface);
   outline: none;
   overflow-y: auto;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: opacity 180ms ease;
 }
 
 .chat-input:focus {

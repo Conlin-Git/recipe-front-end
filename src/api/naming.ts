@@ -37,10 +37,10 @@ export interface NamingResult {
   }
 }
 
-export function analyzeNaming(payload: NamingPayload) {
-  return request<NamingResult>('/naming/analyze', { method: 'POST', body: JSON.stringify(payload) })
+export function analyzeNaming(payload: NamingPayload, signal?: AbortSignal) {
+  return request<NamingResult>('/naming/analyze', { method: 'POST', body: JSON.stringify(payload), signal })
 }
 
-export function scoreNaming(payload: NamingPayload) {
-  return request<NamingResult>('/naming/score', { method: 'POST', body: JSON.stringify(payload) })
+export function scoreNaming(payload: NamingPayload, signal?: AbortSignal) {
+  return request<NamingResult>('/naming/score', { method: 'POST', body: JSON.stringify(payload), signal })
 }
