@@ -30,6 +30,7 @@ export interface NamingResult {
   created_at: string
   result: {
     report_markdown: string
+    report_html: string
     bazi: { pillars: string[]; element_counts: Record<string, number>; least_elements: string[] }
     candidates?: Array<{ name: string; score: number; score_breakdown: Record<string, unknown> }>
     score_breakdown?: Record<string, unknown>

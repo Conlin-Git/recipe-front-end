@@ -174,7 +174,7 @@ defineExpose({ scrollToBottom })
         title="回到底部"
         @click="scrollToBottom(true)"
       >
-        <AppIcon name="top" />
+        <AppIcon name="bottom" />
       </button>
     </Transition>
   </div>
